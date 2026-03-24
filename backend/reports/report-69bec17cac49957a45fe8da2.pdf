@@ -1,0 +1,443 @@
+%PDF-1.3
+%ºß¬à
+3 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 4 0 R
+>>
+endobj
+4 0 obj
+<<
+/Length 4906
+>>
+stream
+0.5670000000000001 w
+0 G
+BT
+/F1 22 Tf
+25.2999999999999972 TL
+0.231 0.51 0.965 rg
+56.6929133858267775 756.8506299212598378 Td
+(AUTONOMOUS QA INSPECTION REPORT) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.392 g
+56.6929133858267775 728.5041732283464171 Td
+(Generated: 21/3/2026, 11:26:27 pm) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.392 g
+56.6929133858267775 714.3309448818897636 Td
+(Target URL: https://chatgpt.com/c/69be07fa-44fc-83a7-8865-c25d5fd67e33) Tj
+ET
+BT
+/F1 14 Tf
+16.0999999999999979 TL
+0. g
+56.6929133858267775 671.8112598425196893 Td
+(EXECUTIVE SUMMARY) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+56.6929133858267775 643.4648031496062686 Td
+(Status: COMPLETED) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+56.6929133858267775 629.291574803149615 Td
+(Pages Crawled: 4) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+56.6929133858267775 615.1183464566928478 Td
+(Total Issues Detected: 20) Tj
+ET
+BT
+/F1 14 Tf
+16.0999999999999979 TL
+0. g
+56.6929133858267775 572.5986614173227736 Td
+(DETECTED ANOMALIES) Tj
+ET
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.863 0.149 0.149 rg
+56.6929133858267775 544.2522047244094665 Td
+(NETWORK & API FAILURES \(16\)) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 524.4096850393700606 Td
+(- Endpoint Public Health Endpoint failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 504.5671653543306547 Td
+(- Endpoint API Root Discovery failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 484.7246456692913057 Td
+(- Endpoint Auth Status Check failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 464.8821259842518998 Td
+(- Endpoint Version Inquiry failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 445.0396062992125508 Td
+(- Endpoint Public Health Endpoint failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 425.1970866141731449 Td
+(- Endpoint API Root Discovery failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 405.3545669291337958 Td
+(- Endpoint Auth Status Check failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 385.5120472440944468 Td
+(- Endpoint Version Inquiry failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 365.6695275590550409 Td
+(- Endpoint Public Health Endpoint failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 345.8270078740156919 Td
+(- Endpoint API Root Discovery failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 325.9844881889763428 Td
+(- Endpoint Auth Status Check failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 306.1419685039369369 Td
+(- Endpoint Version Inquiry failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 286.2994488188975311 Td
+(- Endpoint Public Health Endpoint failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 266.4569291338582389 Td
+(- Endpoint API Root Discovery failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 246.614409448818833 Td
+(- Endpoint Auth Status Check failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 226.7718897637794271 Td
+(- Endpoint Version Inquiry failed with status 403. Verify backend controller and route definitions.) Tj
+ET
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.863 0.149 0.149 rg
+56.6929133858267775 192.7561417322833677 Td
+(ACCESSIBILITY ISSUES \(4\)) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 172.9136220472439618 Td
+(- Missing Content-Security-Policy) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 153.0711023622046696 Td
+(- Missing Content-Security-Policy) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 133.2285826771652637 Td
+(- Missing Content-Security-Policy) Tj
+ET
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.196 g
+70.8661417322834666 113.3860629921258578 Td
+(- Missing Content-Security-Policy) Tj
+ET
+endstream
+endobj
+1 0 obj
+<</Type /Pages
+/Kids [3 0 R ]
+/Count 1
+>>
+endobj
+5 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+6 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+7 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+8 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+9 0 obj
+<<
+/Type /Font
+/BaseFont /Courier
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+10 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+11 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+12 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+13 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Roman
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+14 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+15 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Italic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+16 0 obj
+<<
+/Type /Font
+/BaseFont /Times-BoldItalic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+17 0 obj
+<<
+/Type /Font
+/BaseFont /ZapfDingbats
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+18 0 obj
+<<
+/Type /Font
+/BaseFont /Symbol
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+2 0 obj
+<<
+/ProcSet [/PDF /Text /ImageB /ImageC /ImageI]
+/Font <<
+/F1 5 0 R
+/F2 6 0 R
+/F3 7 0 R
+/F4 8 0 R
+/F5 9 0 R
+/F6 10 0 R
+/F7 11 0 R
+/F8 12 0 R
+/F9 13 0 R
+/F10 14 0 R
+/F11 15 0 R
+/F12 16 0 R
+/F13 17 0 R
+/F14 18 0 R
+>>
+/XObject <<
+>>
+>>
+endobj
+19 0 obj
+<<
+/Producer (jsPDF 4.2.0)
+/CreationDate (D:20260321232627+05'30')
+>>
+endobj
+20 0 obj
+<<
+/Type /Catalog
+/Pages 1 0 R
+/OpenAction [3 0 R /FitH null]
+/PageLayout /OneColumn
+>>
+endobj
+xref
+0 21
+0000000000 65535 f 
+0000005110 00000 n 
+0000006927 00000 n 
+0000000015 00000 n 
+0000000152 00000 n 
+0000005167 00000 n 
+0000005292 00000 n 
+0000005422 00000 n 
+0000005555 00000 n 
+0000005692 00000 n 
+0000005815 00000 n 
+0000005944 00000 n 
+0000006076 00000 n 
+0000006212 00000 n 
+0000006340 00000 n 
+0000006467 00000 n 
+0000006596 00000 n 
+0000006729 00000 n 
+0000006831 00000 n 
+0000007175 00000 n 
+0000007261 00000 n 
+trailer
+<<
+/Size 21
+/Root 20 0 R
+/Info 19 0 R
+/ID [ <E3E574EB1499507F542B872811DB6FCB> <E3E574EB1499507F542B872811DB6FCB> ]
+>>
+startxref
+7365
+%%EOF

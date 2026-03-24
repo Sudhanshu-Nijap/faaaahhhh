@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
+const http = require('http');
+const { Server } = require('socket.io');
 
 dotenv.config({ path: path.join(__dirname, '.env') });
 
@@ -28,10 +30,38 @@ mongoose.connect(process.env.MONGODB_URI)
 // Routes
 const scanRoutes = require('./routes/scanRoutes');
 const authRoutes = require('./routes/authRoutes');
+const chatRoutes = require('./routes/chatRoutes');
 
 app.use('/api', scanRoutes.router);
 app.use('/api/auth', authRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/vision', require('./routes/visionRoutes'));
+app.use('/api/notify', require('./routes/notificationRoutes'));
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
+
+// Global Socket Instance
+global.io = io;
+
+io.on('connection', (socket) => {
+    console.log('Tactical Uplink Established:', socket.id);
+    
+    socket.on('join-room', (reportId) => {
+        socket.join(reportId);
+        console.log(`Socket ${socket.id} joined Tactical Room: ${reportId}`);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('Tactical Uplink Severed:', socket.id);
+    });
+});
+
+server.listen(PORT, () => {
+    console.log(`Sentinel Server Active on Port ${PORT}`);
 });

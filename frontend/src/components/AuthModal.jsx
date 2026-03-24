@@ -7,6 +7,7 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -17,21 +18,46 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
     setLoading(true);
     setError('');
 
+    // Client-side Validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError('Invalid protocol format: Email invalid');
+      setLoading(false);
+      return;
+    }
+
+    if (!isLogin && !username) {
+      setError('Alias required for initialization');
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Access Key requires 6+ characters');
+      setLoading(false);
+      return;
+    }
+
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
       const response = await axios.post(`http://localhost:5000${endpoint}`, {
         email,
-        password
+        password,
+        username: isLogin ? undefined : username
       });
 
       const { token, userId } = response.data;
+      
+      console.log("Authentication Successful. Initializing Identity...");
       localStorage.setItem('token', token);
       localStorage.setItem('userId', userId);
       
+      // Force a clean state refresh
       onLogin();
       onClose();
     } catch (err) {
-      setError(err.response?.data?.message || 'Authentication failed');
+      console.error("Auth System Error:", err.response?.data);
+      setError(err.response?.data?.message || 'Protocol Initialization Failed: Check Credentials');
     } finally {
       setLoading(false);
     }
@@ -39,14 +65,14 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
         className="absolute inset-0 bg-black/80 backdrop-blur-md"
       />
-      
+
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 30 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -55,8 +81,8 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
         className="relative w-full max-w-md glass-card glow-shadow overflow-hidden p-8"
       >
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-50" />
-        
-        <button 
+
+        <button
           onClick={onClose}
           className="absolute top-6 right-6 p-2 rounded-xl hover:bg-white/5 text-text-muted hover:text-white transition-all active:scale-95"
         >
@@ -87,14 +113,36 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
           )}
 
           <form className="space-y-5" onSubmit={handleSubmit}>
+            {!isLogin && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="relative group overflow-hidden"
+              >
+                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-text-muted group-focus-within:text-primary transition-colors">
+                  <User size={18} />
+                </div>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Username"
+                  className="w-full input-glass py-4 pl-12 pr-4 text-sm focus:outline-none"
+                />
+              </motion.div>
+            )}
+
             <div className="relative group">
               <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-text-muted group-focus-within:text-primary transition-colors">
                 <Mail size={18} />
               </div>
-              <input 
-                type="email" 
+              <input
+                type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (error) setError('');
+                }}
                 placeholder="Secure Email"
                 required
                 className="w-full input-glass py-4 pl-12 pr-4 text-sm focus:outline-none"
@@ -105,17 +153,20 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
               <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-text-muted group-focus-within:text-primary transition-colors">
                 <Lock size={18} />
               </div>
-              <input 
-                type="password" 
+              <input
+                type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (error) setError('');
+                }}
                 placeholder="Access Key"
                 required
                 className="w-full input-glass py-4 pl-12 pr-4 text-sm focus:outline-none"
               />
             </div>
 
-            <button 
+            <button
               type="submit"
               disabled={loading}
               className="w-full btn-premium text-white font-black min-h-[56px] py-4 rounded-2xl flex items-center justify-center gap-3 group mt-8 select-none disabled:opacity-50"
@@ -130,7 +181,7 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
           <div className="mt-10 pt-8 border-t border-white/5 text-center">
             <p className="text-sm text-text-muted">
               {isLogin ? "Unauthorized?" : "Already verified?"}{' '}
-              <button 
+              <button
                 onClick={() => {
                   setIsLogin(!isLogin);
                   setError('');

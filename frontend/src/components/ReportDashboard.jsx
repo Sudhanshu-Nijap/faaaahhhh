@@ -1,13 +1,67 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import ReportCard from './ReportCard';
-import { Loader2, RefreshCcw, Search, BarChart3, Database, History } from 'lucide-react';
+import { 
+  Loader2, 
+  RefreshCcw, 
+  Search, 
+  BarChart3, 
+  Database, 
+  History, 
+  Trash2, 
+  Zap,
+  Share,
+  UserPlus,
+  Edit2,
+  Pin,
+  Archive,
+  MoreVertical
+} from 'lucide-react';
 
-const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey }) => {
+const MenuButton = ({ icon, label, onClick, danger, isDark }) => {
+  const [hovered, setHovered] = React.useState(false);
+  const baseStyle = {
+    width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+    padding: '9px 12px', borderRadius: '10px', border: 'none', cursor: 'pointer',
+    fontSize: '13px', fontWeight: 500, textAlign: 'left', transition: 'all 0.18s ease',
+    background: hovered
+      ? danger
+        ? isDark ? 'rgba(239,68,68,0.15)' : 'rgba(254,242,242,1)'
+        : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(241,245,249,1)'
+      : 'transparent',
+    color: danger
+      ? hovered ? (isDark ? '#fca5a5' : '#dc2626') : (isDark ? '#f87171' : '#ef4444')
+      : isDark ? '#e2e8f0' : '#1e293b',
+  };
+  const iconStyle = {
+    color: danger
+      ? hovered ? (isDark ? '#fca5a5' : '#dc2626') : '#f87171'
+      : hovered ? (isDark ? '#a78bfa' : '#6366f1') : (isDark ? '#64748b' : '#94a3b8'),
+    filter: hovered && isDark && !danger ? 'drop-shadow(0 0 5px rgba(167,139,250,0.8))' : 'none',
+    transition: 'all 0.18s ease',
+    flexShrink: 0,
+  };
+  return (
+    <button
+      style={baseStyle}
+      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <span style={iconStyle}>{icon}</span>
+      <span style={{ flex: 1 }}>{label}</span>
+    </button>
+  );
+};
+
+const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme }) => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeMenuId, setActiveMenuId] = useState(null);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
 
   const fetchReports = async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -32,6 +86,48 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey }) => {
     }
   };
 
+  const handlePin = async (id) => {
+    try {
+      const { data } = await axios.patch(`http://localhost:5000/api/report/${id}/pin`);
+      setReports(reports.map(r => r._id === id ? data : r));
+    } catch (error) {
+      console.error('Failed to toggle pin', error);
+    }
+  };
+
+  const handleShare = async (id) => {
+    try {
+      const { data } = await axios.patch(`http://localhost:5000/api/report/${id}/share`);
+      if (data.url) {
+        navigator.clipboard.writeText(data.url);
+        alert(`Classroom Uplink Established! Invite codes copied to tactical clipboard.\n\nURL: ${data.url}`);
+      }
+    } catch (error) {
+      console.error('Failed to initialize classroom', error);
+      alert('Classroom Uplink Initialization Failed.');
+    }
+  };
+
+  const handleRename = async (id, currentName) => {
+    const newName = window.prompt("Enter new name for this session:", currentName);
+    if (!newName || newName === currentName) return;
+    try {
+      const { data } = await axios.patch(`http://localhost:5000/api/report/${id}/rename`, { name: newName });
+      setReports(reports.map(r => r._id === id ? data : r));
+    } catch (err) {
+      console.error("Rename failed", err);
+    }
+  };
+
+  const handleArchive = async (id) => {
+    try {
+      const { data } = await axios.patch(`http://localhost:5000/api/report/${id}/archive`);
+      setReports(reports.map(r => r._id === id ? data : r));
+    } catch (err) {
+      console.error("Archive failed", err);
+    }
+  };
+
   // Initial fetch and manual refresh
   useEffect(() => {
     fetchReports();
@@ -52,112 +148,334 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey }) => {
   }, [reports]);
 
   const filteredReports = reports.filter(r => 
-    new URL(r.url).hostname.toLowerCase().includes(searchQuery.toLowerCase())
+    !r.isArchived && new URL(r.url).hostname.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const sortedReports = [...filteredReports].sort((a, b) => {
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+    return new Date(b.scanDate) - new Date(a.scanDate);
+  });
+
+  const [selectedReports, setSelectedReports] = useState([]);
+  const [comparisonResults, setComparisonResults] = useState(null);
+  const [comparing, setComparing] = useState(false);
+
+  const toggleSelect = (id) => {
+    setSelectedReports(prev => 
+      prev.includes(id) ? prev.filter(rid => rid !== id) : 
+      prev.length < 2 ? [...prev, id] : [prev[1], id]
+    );
+  };
+
+  const runShadowScan = async () => {
+    if (selectedReports.length !== 2) return;
+    setComparing(true);
+    try {
+      const { data } = await axios.post('http://localhost:5000/api/vision/compare', {
+        reportId1: selectedReports[0],
+        reportId2: selectedReports[1]
+      });
+      setComparisonResults(data);
+    } catch (err) {
+      alert("Shadow scan failed. Ensure both reports have valid screenshots.");
+    } finally {
+      setComparing(false);
+    }
+  };
 
   return (
     <div className={`w-full ${isBentoView ? 'h-full flex flex-col' : ''}`}>
       {!isBentoView && (
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-10 mb-16">
-        <div className="flex flex-col gap-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-10 mb-16 px-4 sm:px-0">
+        <div className="flex flex-col gap-6 w-full sm:w-auto">
            <div className="flex items-center gap-6">
-              <div className="h-px w-12 bg-primary/40" />
-              <span className="text-[9px] font-black tracking-industrial text-primary/60 uppercase">Data Repository</span>
+              <div className="h-px w-12 bg-eu-accent/40" />
+              <span className="text-[10px] font-black tracking-industrial text-eu-accent uppercase opacity-50">Intel Records</span>
            </div>
-           <div className="flex items-center gap-4">
-              <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tight-mega premium-gradient-text">Archives</h2>
-              <span className="flex items-center justify-center text-[10px] font-black px-2.5 h-6 rounded-lg bg-primary/10 text-primary border border-primary/20 shadow-neon">
-                 {reports.length}
-              </span>
+           <div className="flex items-center gap-5">
+              <h2 className="text-4xl sm:text-6xl font-black uppercase tracking-tight-mega premium-gradient-text font-outfit">Lattice</h2>
+              <div className="flex gap-3">
+                <span className="flex items-center justify-center text-[11px] font-black px-3 h-7 rounded-xl bg-eu-accent/10 text-eu-accent border border-eu-accent/20 shadow-neon">
+                    {reports.length}
+                </span>
+                {selectedReports.length > 0 && (
+                    <button 
+                      onClick={() => setSelectedReports([])}
+                      className="px-3 h-7 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20 text-[9px] font-black uppercase shadow-neon"
+                    >
+                      Clear Selection ({selectedReports.length})
+                    </button>
+                )}
+              </div>
            </div>
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto pb-2">
-          <div className="relative flex-1 md:w-64 group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500/50 group-focus-within:text-primary transition-colors" size={16} />
+        <div className="flex items-center gap-4 w-full md:w-auto">
+          {selectedReports.length > 0 && (
+            <div className="flex items-center gap-3">
+              {selectedReports.length === 2 && (
+                <button 
+                  onClick={runShadowScan}
+                  disabled={comparing}
+                  className="h-14 px-8 bg-eu-accent text-white rounded-[20px] text-[12px] font-black uppercase tracking-widest shadow-neon hover:scale-110 active:scale-95 transition-all flex items-center gap-3 disabled:opacity-50"
+                >
+                  {comparing ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} />}
+                  Run Shadow scan
+                </button>
+              )}
+              <button 
+                onClick={async () => {
+                  if (window.confirm(`Purge ${selectedReports.length} selected records? This is irreversible.`)) {
+                    for (const id of selectedReports) {
+                      await handleDelete(id);
+                    }
+                    setSelectedReports([]);
+                  }
+                }}
+                className="h-14 px-8 bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white rounded-[20px] text-[12px] font-black uppercase tracking-widest border border-rose-500/20 transition-all flex items-center gap-3"
+              >
+                <Trash2 size={16} />
+                Purge Selected
+              </button>
+            </div>
+          )}
+
+          <div className="relative flex-1 md:w-80 group">
+            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-eu-accent transition-colors size-5" />
             <input 
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Filter by Domain..."
-              className="w-full h-12 bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 text-[13px] font-bold tracking-industrial uppercase focus:outline-none focus:border-primary/40 focus:bg-white/[0.07] transition-all"
+              placeholder="Filter Lattice..."
+              className="w-full h-14 bg-white/5 border border-white/5 rounded-[20px] pl-14 pr-6 text-[13px] font-black tracking-industrial uppercase focus:outline-none focus:border-eu-accent/30 focus:bg-white/10 transition-all placeholder:text-slate-700 shadow-inner"
             />
           </div>
           
           <button 
-            onClick={fetchReports}
-            className="w-12 h-12 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center hover:border-primary/40 text-slate-500 hover:text-white transition-all active:scale-95"
+            onClick={() => fetchReports()}
+            className="w-14 h-14 bg-white/5 border border-white/5 rounded-[20px] flex items-center justify-center hover:border-eu-accent/30 text-slate-500 hover:text-white transition-all active:scale-95"
           >
-            <RefreshCcw size={16} className={loading ? 'animate-spin text-primary' : ''} />
+            <RefreshCcw size={18} className={loading ? 'animate-spin text-eu-accent' : ''} />
           </button>
         </div>
       </div>
       )}
       
       {/* Dashboard Grid */}
-      <div className="relative min-h-[400px]">
+      <div className="relative min-h-[300px] sm:min-h-[400px]">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-40 glass-card border-dashed border-white/10">
-            <div className="relative flex items-center justify-center mb-8">
+          <div className="flex flex-col items-center justify-center py-24 sm:py-40 glass-card border-dashed border-white/10 mx-4 sm:mx-0">
+            <div className="relative flex items-center justify-center mb-6 sm:mb-8">
                <motion.div 
                  animate={{ rotate: 360 }}
                  transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-                 className="absolute inset-[-30px] border border-dashed border-primary/20 rounded-full" 
+                 className="absolute inset-[-20px] sm:inset-[-30px] border border-dashed border-primary/20 rounded-full" 
                />
-               <Loader2 className="animate-spin text-primary" size={60} strokeWidth={1} />
+               <Loader2 className="animate-spin text-primary size-12 sm:size-[60px]" strokeWidth={1} />
             </div>
-            <p className="text-text-muted font-black tracking-[0.4em] uppercase text-[10px] opacity-40 animate-pulse">Requesting Uplink Access...</p>
+            <p className="text-text-muted font-black tracking-[0.4em] uppercase text-[8px] sm:text-[10px] opacity-40 animate-pulse">Requesting Uplink Access...</p>
           </div>
         ) : filteredReports.length === 0 ? (
           <motion.div 
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="p-32 text-center glass-card border-dashed border-white/10"
+            className="p-16 sm:p-32 text-center glass-card border-dashed border-white/10 mx-4 sm:mx-0"
           >
-            <div className="w-20 h-20 bg-primary/5 rounded-[30px] flex items-center justify-center mx-auto mb-8 border border-primary/5">
-              <Database className="text-primary/10" size={36} />
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-primary/5 rounded-[24px] sm:rounded-[30px] flex items-center justify-center mx-auto mb-6 sm:mb-8 border border-primary/5">
+              <Database className="text-primary/10 size-8 sm:size-[36px]" />
             </div>
-            <h3 className="text-2xl font-black text-white mb-4 uppercase tracking-tight">System Index Clear</h3>
-            <p className="text-text-muted text-lg max-w-sm mx-auto font-medium opacity-40 leading-relaxed">
+            <h3 className="text-xl sm:text-2xl font-black text-white mb-2 sm:mb-4 uppercase tracking-tight">System Index Clear</h3>
+            <p className="text-text-muted text-sm sm:text-lg max-w-sm mx-auto font-medium opacity-40 leading-relaxed">
               No authenticated diagnostic signatures found in the current localized memory sector.
             </p>
           </motion.div>
         ) : (
           <motion.div 
             layout
-            className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-8"
+            className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6 sm:gap-8 px-4 sm:px-0"
           >
             <AnimatePresence mode="popLayout">
-              {filteredReports.map((report) => (
-                <ReportCard 
-                  key={report._id} 
-                  report={report} 
-                  onClick={onSelectReport} 
-                  onDelete={handleDelete}
-                />
+              {sortedReports.map((report) => (
+                <div key={report._id} className="relative group">
+                  <ReportCard 
+                    report={report} 
+                    onClick={selectedReports.length > 0 ? toggleSelect : onSelectReport} 
+                    onDelete={handleDelete}
+                    onPin={handlePin}
+                    onShare={handleShare}
+                    onRename={handleRename}
+                    onArchive={handleArchive}
+                    onGroupChart={toggleSelect}
+                    onOpenMenu={(id, pos) => {
+                      setMenuPosition({
+                        top: pos.top,
+                        left: pos.left
+                      });
+                      setActiveMenuId(id);
+                    }}
+                    isMenuOpen={activeMenuId === report._id}
+                  />
+                  {/* Select Trigger Overlay */}
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(report._id); }}
+                    className={`absolute top-4 left-4 size-6 rounded-lg border flex items-center justify-center transition-all ${
+                        selectedReports.includes(report._id) 
+                        ? 'bg-primary border-primary text-white scale-110 shadow-neon' 
+                        : 'bg-black/40 border-white/20 text-transparent opacity-0 group-hover:opacity-100 hover:border-primary/50'
+                    }`}
+                  >
+                    <div className="size-2 rounded-full bg-current" />
+                  </button>
+                </div>
               ))}
             </AnimatePresence>
           </motion.div>
         )}
       </div>
 
+      {/* Shadow Scan Results Modal */}
+      <AnimatePresence>
+        {comparisonResults && (
+           <motion.div 
+             initial={{ opacity: 0 }} 
+             animate={{ opacity: 1 }} 
+             exit={{ opacity: 0 }}
+             className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-12 bg-slate-950/90 backdrop-blur-xl"
+             onClick={() => setComparisonResults(null)}
+           >
+             <motion.div 
+               initial={{ scale: 0.9, y: 20 }}
+               animate={{ scale: 1, y: 0 }}
+               className="w-full max-w-4xl bg-slate-900 border border-primary/20 rounded-[40px] overflow-hidden shadow-2xl overflow-y-auto max-h-[90vh]"
+               onClick={e => e.stopPropagation()}
+             >
+               <div className="p-8 sm:p-12 space-y-10">
+                 <div className="flex items-center justify-between">
+                   <div className="flex items-center gap-6">
+                      <div className="size-16 bg-primary/20 rounded-[28px] flex items-center justify-center border border-primary/30">
+                        <History className="text-primary size-8" />
+                      </div>
+                      <div>
+                        <h2 className="text-3xl sm:text-4xl font-black italic uppercase tracking-tight text-white">Shadow <span className="premium-gradient-text">Scan Analysis</span></h2>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">Cross-Environment UI Regression Index</p>
+                      </div>
+                   </div>
+                   <div className="text-right">
+                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Visual Integrity Score</span>
+                      <span className={`text-4xl font-black italic tracking-tighter ${comparisonResults.score > 90 ? 'text-emerald-500' : 'text-rose-500'}`}>{comparisonResults.score}%</span>
+                   </div>
+                 </div>
+
+                 <div className="p-8 bg-white/5 border border-white/10 rounded-[32px]">
+                   <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-4">Neural Overview</p>
+                   <p className="text-lg text-slate-300 font-medium italic leading-relaxed">"{comparisonResults.summary}"</p>
+                 </div>
+
+                 <div className="space-y-6">
+                    <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest border-b border-rose-500/20 pb-4">Identified Regressions ({comparisonResults.differences?.length || 0})</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {comparisonResults.differences?.map((diff, i) => (
+                        <div key={i} className="p-6 bg-slate-800/40 border border-white/5 rounded-2xl space-y-3">
+                          <div className="flex items-center gap-3">
+                            <span className="px-2 py-0.5 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded text-[8px] font-black uppercase">{diff.severity}</span>
+                            <h4 className="text-sm font-black text-white uppercase tracking-tight">{diff.issue}</h4>
+                          </div>
+                          <p className="text-xs text-slate-400 leading-relaxed">{diff.details}</p>
+                        </div>
+                      ))}
+                    </div>
+                 </div>
+
+                 <button 
+                   onClick={() => setComparisonResults(null)}
+                   className="w-full py-6 bg-white/5 border border-white/10 rounded-3xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:bg-white/10 transition-all font-outfit"
+                 >
+                   Deactivate Shadow Interface
+                 </button>
+               </div>
+             </motion.div>
+           </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Decorative Grid Stats Overlay */}
       {!isBentoView && (
-        <div className="mt-20 grid grid-cols-1 lg:grid-cols-4 gap-8 opacity-30">
+        <div className="mt-12 sm:mt-20 grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 opacity-30 px-4 sm:px-0">
            <StatsPanel label="Cluster Peak" value="98.4%" />
            <StatsPanel label="Neural Load" value="Critical" primary />
            <StatsPanel label="Active Nodes" value="1,024" />
            <StatsPanel label="Uptime" value="100.00.00" />
         </div>
       )}
+      {/* Euphoria Action Menu Portal */}
+      {activeMenuId && createPortal(
+        (() => {
+          const isDark = theme === 'dark';
+          const panelStyle = isDark ? {
+            position: 'fixed', top: menuPosition.top, left: menuPosition.left, zIndex: 999999,
+            width: '14rem',
+            background: 'rgba(14, 14, 18, 0.97)',
+            backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+            border: '1px solid rgba(139, 92, 246, 0.2)',
+            borderRadius: '16px', padding: '6px',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(139,92,246,0.15), 0 24px 60px rgba(139,92,246,0.15)',
+            overflow: 'hidden',
+          } : {
+            position: 'fixed', top: menuPosition.top, left: menuPosition.left, zIndex: 999999,
+            width: '14rem',
+            background: 'rgba(255,255,255,0.97)',
+            backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+            border: '1px solid rgba(226,232,240,1)',
+            borderRadius: '16px', padding: '6px',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.05)',
+            overflow: 'hidden',
+          };
+          const headerStyle = {
+            padding: '6px 12px 8px',
+            borderBottom: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(226,232,240,0.8)',
+            marginBottom: '4px',
+          };
+          const headerTextStyle = {
+            fontSize: '9px', fontWeight: 900, textTransform: 'uppercase',
+            letterSpacing: '0.18em',
+            color: isDark ? 'rgba(148,163,184,0.45)' : 'rgba(148,163,184,1)',
+          };
+          const dividerStyle = {
+            height: '1px',
+            background: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(226,232,240,0.8)',
+            margin: '4px 8px',
+          };
+          return (
+            <>
+              <div className="fixed inset-0" style={{ zIndex: 999998 }} onClick={(e) => { e.stopPropagation(); setActiveMenuId(null); }} />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92, y: -8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.92, y: -8 }}
+                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                style={panelStyle}
+              >
+                <div style={headerStyle}><span style={headerTextStyle}>Options</span></div>
+                <MenuButton isDark={isDark} icon={<UserPlus size={14} />} label="Start a group chat" onClick={() => { handleShare(activeMenuId); setActiveMenuId(null); }} />
+                <MenuButton isDark={isDark} icon={<Edit2 size={14} />} label="Rename" onClick={() => { const report = reports.find(r => r._id === activeMenuId); handleRename(activeMenuId, report?.customName || new URL(report?.url).hostname); setActiveMenuId(null); }} />
+                <div style={dividerStyle} />
+                <MenuButton isDark={isDark} icon={<Pin size={14} />} label="Pin chat" onClick={() => { handlePin(activeMenuId); setActiveMenuId(null); }} />
+                <div style={dividerStyle} />
+                <MenuButton isDark={isDark} icon={<Trash2 size={14} />} label="Delete" onClick={() => { handleDelete(activeMenuId); setActiveMenuId(null); }} danger />
+              </motion.div>
+            </>
+          );
+        })()
+      , document.body)}
     </div>
   );
 };
 
 const StatsPanel = ({ label, value, primary }) => (
-  <div className={`p-6 glass-card flex flex-col items-center gap-1 ${primary ? 'border-primary/30 bg-primary/5' : ''}`}>
-    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-text-muted">{label}</p>
-    <p className={`text-xl font-black ${primary ? 'text-primary' : 'text-white'}`}>{value}</p>
+  <div className={`p-8 glass-euphoria flex flex-col items-center gap-2 rounded-[32px] ${primary ? 'border-eu-accent/30 bg-eu-accent/5 shadow-neon' : ''}`}>
+    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 opacity-60">{label}</p>
+    <p className={`text-2xl font-black font-outfit ${primary ? 'text-white' : 'text-slate-200'}`}>{value}</p>
   </div>
 );
 

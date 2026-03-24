@@ -9,7 +9,8 @@ import {
   Activity, 
   Zap, 
   Globe,
-  Database
+  Database,
+  MessageSquare
 } from 'lucide-react';
 
 const CAPABILITIES = [
@@ -21,9 +22,9 @@ const CAPABILITIES = [
   },
   {
     icon: <Cpu size={22} />,
-    title: "AI Vulnerability Engine",
-    desc: "Proprietary AI classifiers categorize findings into risk-stratified diagnostic reports.",
-    tag: "AI_LOGIC"
+    title: "Gemini 2.5 Analysis",
+    desc: "Advanced AI reasoning categorizes findings into risk-stratified architectural reports.",
+    tag: "AI_GEMINI"
   },
   {
     icon: <Lock size={22} />,
@@ -39,28 +40,24 @@ const CAPABILITIES = [
   },
   {
     icon: <Zap size={22} />,
-    title: "Immediate Reporting",
-    desc: "High-density reports generated in real-time as the scan completes.",
-    tag: "REP_SYNC"
+    title: "PDF Audit Reports",
+    desc: "Generate professional technical reports instantly with high-density issue breakdowns.",
+    tag: "REP_AUTH"
   },
   {
-    icon: <Shield size={22} />,
-    title: "Industrial Aesthetics",
-    desc: "Premium Cyber-Brutalist interface designed for high-stakes operation centers.",
-    tag: "UI_ELITE"
+    icon: <MessageSquare size={22} />,
+    title: "AI Neural Chat",
+    desc: "Real-time technical dialogue with an AI architect specializing in complex remediation.",
+    tag: "CHAT_SOC"
   }
 ];
 
 const Capabilities = () => {
   return (
     <div className="max-w-7xl mx-auto px-6">
-      <div className="flex flex-col mb-20 gap-4">
-        <div className="flex items-center gap-6">
-          <div className="h-px w-16 bg-primary" />
-          <span className="text-[12px] font-black tracking-industrial text-primary uppercase">Core Capacities</span>
-        </div>
-        <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tight-mega premium-gradient-text">
-          Industrial Grade<br/>Security Operations
+      <div className="flex flex-col mb-8 sm:mb-10 gap-4 px-4 sm:px-0">
+        <h2 className="text-3xl sm:text-4xl md:text-5xl font-black uppercase tracking-tight-mega premium-gradient-text leading-tight sm:leading-none">
+          Industrial Grade<br className="hidden sm:block" />Security Operations
         </h2>
       </div>
 
@@ -85,7 +82,7 @@ const Capabilities = () => {
             <h3 className="text-lg font-black uppercase tracking-tight text-white mb-3 group-hover:text-primary transition-colors">
               {cap.title}
             </h3>
-            <p className="text-slate-500 text-xs md:text-sm leading-relaxed font-outfit uppercase tracking-widest opacity-80 group-hover:opacity-100 transition-opacity">
+            <p className="text-slate-500 text-xs md:text-sm leading-relaxed font-outfit uppercase tracking-widest opacity-80 group-hover:opacity-100 transition-opacity text-justify" style={{ textAlignLast: 'left' }}>
               {cap.desc}
             </p>
             

@@ -9,6 +9,11 @@ const userSchema = new mongoose.Schema({
         trim: true,
         lowercase: true
     },
+    username: {
+        type: String,
+        trim: true,
+        default: ''
+    },
     password: {
         type: String,
         required: true
@@ -16,6 +21,16 @@ const userSchema = new mongoose.Schema({
     createdAt: {
         type: Date,
         default: Date.now
+    },
+    n8nWebhookUrl: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    discordWebhookUrl: {
+        type: String,
+        trim: true,
+        default: ''
     }
 });
 
