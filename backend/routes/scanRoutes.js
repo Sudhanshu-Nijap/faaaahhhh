@@ -246,13 +246,7 @@ router.get('/stats/trends', async (req, res) => {
  */
 const calculateReportHealth = (report) => {
     if (!report) return 0;
-    const weights = {
-        network: 0.5,
-        links: 10,
-        console: 2,
-        ui: 5,
-        accessibility: 15
-    };
+    const weights = { network: 0.1, links: 10, console: 5, ui: 10, accessibility: 10 };
     const counts = {
         network: report.networkLogs?.length || 0,
         links: report.brokenLinks?.length || 0,
@@ -261,11 +255,9 @@ const calculateReportHealth = (report) => {
         accessibility: report.accessibilityIssues?.length || 0
     };
 
-    const deductions = Object.keys(weights).reduce((acc, key) => {
-        return acc + (counts[key] * weights[key]);
-    }, 0);
-
-    return Math.max(0, Math.round(100 - deductions));
+    const rawDeduction = Object.keys(weights).reduce((acc, key) => acc + (counts[key] * weights[key] || 0), 0);
+    const score = Math.max(1, Math.round(100 * Math.exp(-rawDeduction / 400)));
+    return score;
 };
 
 /**

@@ -24,8 +24,7 @@ mongoose.connect(process.env.MONGODB_URI)
 const calculateReportHealth = (report) => {
     if (!report) return 0;
     
-    // Softer base weights for an exponential deduction curve
-    const weights = { network: 0.5, links: 8, console: 2, ui: 3, accessibility: 3 };
+    const weights = { network: 0.1, links: 10, console: 5, ui: 10, accessibility: 10 };
     const counts = {
         network: report.networkLogs?.length || 0,
         links: report.brokenLinks?.length || 0,
@@ -34,12 +33,14 @@ const calculateReportHealth = (report) => {
         accessibility: report.accessibilityIssues?.length || 0
     };
     
-    const rawDeduction = Object.keys(weights).reduce((acc, key) => acc + (counts[key] * weights[key]), 0);
+    // Higher constant: make it harder to hit 0
+    const rawDeduction = Object.keys(weights).reduce((acc, key) => acc + (counts[key] * weights[key] || 0), 0);
+    const decayConstant = 400; // Much more lenient for full audits
+    const scaledScore = 100 * Math.exp(-rawDeduction / decayConstant);
+    const score = Math.max(1, Math.round(scaledScore)); // Never 0 if completed
     
-    // Exponential decay curve: makes sure early errors hurt, but prevents immediate drops to 0
-    const scaledScore = 100 * Math.exp(-rawDeduction / 75);
-    
-    return Math.max(0, Math.round(scaledScore));
+    console.log(`[Scoring]: ${report.url} -> RawDeduction: ${rawDeduction}, Score: ${score}% (Method: EXP_DECAY_400)`);
+    return score;
 };
 
 // 5. Orchestration Pipeline
@@ -145,12 +146,13 @@ async function runMasterOrchestrator(data) {
 
         const comparison = await comparisonService.calculateDelta(currentReport, previousReport);
 
-        // Finalize Report
-        const finalReport = await ScanReport.findByIdAndUpdate(reportId, { 
-            status: 'completed', 
-            healthScore,
-            comparison
-        }, { new: true });
+        // Finalize Report using explicit save to ensure stability
+        currentReport.status = 'completed';
+        currentReport.healthScore = healthScore;
+        currentReport.comparison = comparison;
+        
+        await currentReport.save({ validateBeforeSave: false });
+        const finalReport = currentReport;
 
         // --- STAGE 5: Post to Chat Thread ---
         if (chatId) {
