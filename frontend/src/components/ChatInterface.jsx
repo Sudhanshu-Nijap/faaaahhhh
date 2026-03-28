@@ -1,319 +1,513 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Send,
-  Terminal,
-  Cpu,
-  Bot,
-  User,
-  Zap,
-  Shield,
-  Loader2,
-  Globe,
-  Activity,
-  Bug,
-  Lock,
-  ArrowRight,
-  Layout,
-  Pin
-} from 'lucide-react';
+import { Send, Bot, User, Shield, Zap, Sparkles, MessageSquare, Plus, Activity, Terminal, Lock, Globe, Command, Trash2, ChevronUp, Check } from 'lucide-react';
 import axios from 'axios';
-import { io } from 'socket.io-client';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
-const ChatInterface = ({ onScanStarted, activeReportId, onViewFullReport, onRefresh }) => {
-  const [sessionUrl, setSessionUrl] = useState(null);
-  const [messages, setMessages] = useState([]);
+const ChatInterface = ({ activeReportId, onScanStarted, onViewFullReport, onRefresh, onResetTarget, globalScanProgress, pendingMessage, onMessageConsumed }) => {
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sentinel_chat_messages');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [isPinned, setIsPinned] = useState(false);
-  const scrollRef = useRef(null);
+  const [reportData, setReportData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [sessionError, setSessionError] = useState(null);
+  const messagesEndRef = useRef(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-  const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
-  const userId = localStorage.getItem('userId');
-
-  // Real-time Neural Uplink (Socket)
-  useEffect(() => {
-    if (!activeReportId) return;
-
-    const socket = io(SOCKET_URL);
-
-    socket.emit('join-room', activeReportId.toString());
-
-    socket.on('scan-event', (event) => {
-      setMessages(prev => {
-        const lastAiMsgIdx = [...prev].reverse().findIndex(m => m.type === 'ai' && m.isInitial);
-        if (lastAiMsgIdx !== -1) {
-          const actualIdx = prev.length - 1 - lastAiMsgIdx;
-          const newMessages = [...prev];
-          const updatedMsg = { ...newMessages[actualIdx] };
-          updatedMsg.recentEvents = [event, ...(updatedMsg.recentEvents || [])].slice(0, 10);
-          newMessages[actualIdx] = updatedMsg;
-          return newMessages;
-        }
-        return prev;
-      });
-    });
-
-    return () => socket.disconnect();
-  }, [activeReportId]);
-
-  // Handle Session Switching
-  useEffect(() => {
-    if (activeReportId) {
-      const loadSession = async () => {
-        setIsTyping(true);
-        try {
-          const { data } = await axios.get(`${API_URL}/report/${activeReportId}`);
-          setSessionUrl(data.url);
-          setMessages([
-            {
-              id: Date.now(),
-              type: 'ai',
-              isInitial: true,
-              text: `Session Synchronized: ${new URL(data.url).hostname}. Diagnostic matrix for version ${data._id.substring(0, 8)} loaded.`,
-              analysis: data.aiInsights,
-              recentEvents: data.liveEvents?.slice(-5).reverse() || []
-            }
-          ]);
-          setIsPinned(data.isPinned || false);
-        } catch (err) {
-          console.error("Failed to load session", err);
-        } finally {
-          setIsTyping(false);
-        }
-      };
-      loadSession();
-    } else {
-      setSessionUrl(null);
-      setMessages([
-        {
-          id: 1,
-          type: 'ai',
-          text: "Sentinel QA GPT v4.2 Online. Provide a Target Infrastructure URL to initialize a testing session."
-        }
-      ]);
-    }
-  }, [activeReportId]);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    scrollToBottom();
+    localStorage.setItem('sentinel_chat_messages', JSON.stringify(messages));
   }, [messages, isTyping]);
 
-  const handleSend = async (e, forcedMessage = null) => {
-    if (e) e.preventDefault();
-    const userMsg = forcedMessage || input.trim();
-    if (!userMsg || isTyping) return;
+  const prevActiveIdRef = useRef(activeReportId);
 
-    if (!forcedMessage) setInput('');
-    setMessages(prev => [...prev, { id: Date.now(), type: 'user', text: userMsg }]);
+  useEffect(() => {
+    if (activeReportId) {
+      loadReportData(activeReportId);
+    } else {
+      setReportData(null);
+      // If we just transitioned from an active report to null (New Session clicked)
+      // OR if there are no messages at all, show welcome
+      if (prevActiveIdRef.current !== null || messages.length === 0) {
+        setMessages([{
+          id: 'welcome',
+          role: 'ai',
+          content: "NEURAL LATTICE ONLINE. STANDING BY FOR TARGET ACQUISITION. \n\nProvide an Infrastructure URL to:\n- INITIATE CORE QA AUDIT\n- CAPTURE HIGH-FIDELITY SCREENSHOTS\n- ANALYZE PERFORMANCE & ACCESSIBILITY\n\nThe Hub is optimized for speed and visual diagnostics.",
+          timestamp: new Date().toLocaleTimeString()
+        }]);
+        localStorage.removeItem('sentinel_chat_messages');
+      }
+    }
+    prevActiveIdRef.current = activeReportId;
+  }, [activeReportId]);
+
+  // Handle pending messages from report view
+  useEffect(() => {
+    if (pendingMessage && !isTyping) {
+       handleSend(null, pendingMessage);
+       if (onMessageConsumed) onMessageConsumed();
+    }
+  }, [pendingMessage, isTyping]);
+
+  const loadReportData = async (id) => {
+    setLoading(true);
+    setSessionError(null);
+    try {
+      const { data } = await axios.get(`http://localhost:5000/api/report/${id}`);
+      setReportData(data);
+
+      const history = data.chatHistory || [];
+      const formattedHistory = history.map((msg, index) => ({
+          id: `hist-${index}`,
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp || new Date().toLocaleTimeString()
+      }));
+
+      setMessages(prev => {
+        if (formattedHistory.length > 0) return formattedHistory;
+        
+        return [{
+          id: 'welcome-report',
+          role: 'ai',
+          content: `Target Acquisition Successful: ${new URL(data.url).hostname}. Neural analysis is complete. How should we proceed with the findings?`,
+          timestamp: new Date().toLocaleTimeString()
+        }];
+      });
+    } catch (err) {
+      console.error("Failed to load report", err);
+      setSessionError("Neural Link Severed: Failed to synchronize with report metadata.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const [showSensors, setShowSensors] = useState(false);
+  const [scanParams, setScanParams] = useState(() => {
+    try {
+      return saved ? JSON.parse(saved) : { scope: 'single', mode: 'specific', tests: ['console', 'network', 'lighthouse', 'accessibility', 'links'] };
+    } catch { return { scope: 'single', mode: 'specific', tests: ['console', 'network', 'lighthouse', 'accessibility', 'links'] }; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sentinel_scan_params', JSON.stringify(scanParams));
+  }, [scanParams]);
+
+  const toggleTest = (test) => {
+    setScanParams(prev => ({
+      ...prev,
+      tests: prev.tests.includes(test)
+        ? prev.tests.filter(t => t !== test)
+        : [...prev.tests, test]
+    }));
+  };
+
+  const normalizeUrl = (input) => {
+    let trimmed = input.trim();
+    if (!trimmed) return "";
+    if (!/^(https?:\/\/)/i.test(trimmed)) {
+      trimmed = `https://${trimmed}`;
+    }
+    return trimmed;
+  };
+
+  const validateUrl = (urlToTest) => {
+    try {
+      const pattern = /^(https?:\/\/)[^\s$.?#].[^\s]*$/i;
+      if (!pattern.test(urlToTest)) return false;
+      const parsed = new URL(urlToTest);
+      return !!parsed.hostname && parsed.hostname.includes('.');
+    } catch {
+      return false;
+    }
+  };
+
+  const handleSend = async (e, manualInput = null) => {
+    if (e) e.preventDefault();
+    const finalInput = manualInput || input;
+    if (!finalInput.trim() || isTyping) return;
+
+    const userMsg = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: finalInput,
+      timestamp: new Date().toLocaleTimeString()
+    };
+
+    setMessages(prev => [...prev, userMsg]);
+    if (!manualInput) setInput('');
     setIsTyping(true);
 
     try {
-      const { data } = await axios.post(`${API_URL}/chat/command`, {
-        message: userMsg,
-        userId,
-        contextUrl: sessionUrl
-      });
+      // If no active report, treat input as URL for new scan
+      if (!activeReportId) {
+        const targetUrl = normalizeUrl(finalInput);
+        if (!validateUrl(targetUrl)) {
+          setMessages(prev => [...prev, {
+            id: 'err-val-' + Date.now(),
+            role: 'ai',
+            content: "Invalid format detected. Target must be a valid domain string (e.g., example.com). Refusing linkage.",
+            timestamp: new Date().toLocaleTimeString(),
+            isError: true
+          }]);
+          setIsTyping(false);
+          return;
+        }
 
-      if (data.analysis?.url) {
-        setSessionUrl(data.analysis.url);
+        setMessages(prev => [...prev, {
+          id: 'url-capture-' + Date.now(),
+          role: 'ai',
+          content: `Initializing Protocol: ${scanParams.mode === 'full' ? 'FULL_AUDIT' : scanParams.scope === 'single' ? 'EXPRESS_DIAGNOSTIC' : 'TARGETED_CRAWL'} for ${targetUrl}. Tests: ${scanParams.tests.join(', ')}.`,
+          timestamp: new Date().toLocaleTimeString()
+        }]);
+
+        const userId = localStorage.getItem('userId');
+        const response = await axios.post('http://localhost:5000/api/scan', {
+          url: targetUrl,
+          userId,
+          scope: scanParams.scope,
+          mode: scanParams.mode,
+          tests: scanParams.tests,
+          force: true
+        });
+
+        if (response.data.reportId) {
+          onScanStarted(response.data.reportId);
+        }
+      } else {
+        // Chat about active report
+        const { data } = await axios.post('http://localhost:5000/api/chat', {
+          message: finalInput,
+          reportId: activeReportId
+        });
+
+        const aiMsg = {
+          id: (Date.now() + 1).toString(),
+          role: 'ai',
+          content: data.reply,
+          timestamp: new Date().toLocaleTimeString()
+        };
+        setMessages(prev => [...prev, aiMsg]);
       }
-
+    } catch (err) {
       setMessages(prev => [...prev, {
-        id: Date.now() + 1,
-        type: 'ai',
-        text: data.response,
-        analysis: data.analysis
-      }]);
-
-      if (data.reportId) {
-        onScanStarted(data.reportId);
-      }
-    } catch (error) {
-      setMessages(prev => [...prev, {
-        id: Date.now() + 1,
-        type: 'ai',
-        text: "Error in neural uplink. Command synchronization failed."
+        id: 'error-' + Date.now(),
+        role: 'ai',
+        content: "Neural interference detected. Uplink failed. Please verify the target parameters or check the host connectivity.",
+        timestamp: new Date().toLocaleTimeString(),
+        isError: true
       }]);
     } finally {
       setIsTyping(false);
     }
   };
-  const handlePinToggle = async () => {
-    if (!activeReportId) return;
-    try {
-      const { data } = await axios.patch(`${API_URL}/report/${activeReportId}/pin`);
-      setIsPinned(data.isPinned);
-      if (onRefresh) onRefresh();
-    } catch (err) {
-      console.error("Neural pin toggle failed", err);
-    }
-  };
 
-  const ActionChip = ({ icon: Icon, label, cmd }) => (
-    <button
-      onClick={() => handleSend(null, cmd)}
-      disabled={isTyping}
-      className="flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/20 rounded-full text-[10px] font-black uppercase tracking-widest text-primary hover:bg-primary/20 hover:border-primary/40 transition-all active:scale-95 disabled:opacity-30 whitespace-nowrap"
-    >
-      <Icon size={12} />
-      {label}
-    </button>
+  const WelcomeHero = () => (
+    <div className="flex flex-col items-center justify-center h-full min-h-[500px] max-w-lg mx-auto text-center space-y-8 py-6">
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="size-14 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20 shadow-neon relative overflow-hidden"
+      >
+        <Shield className="text-primary size-6 relative z-10" />
+        <motion.div
+          animate={{ y: [-30, 30] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          className="absolute inset-x-0 h-1 bg-primary/40 blur-sm"
+        />
+      </motion.div>
+
+      <div className="space-y-1">
+        <h1 className="text-lg font-black uppercase tracking-tighter text-[var(--eu-text-main)] italic leading-none">
+          Neural Lattice Active
+        </h1>
+        <p className="text-[8px] font-black uppercase tracking-[0.4em] text-primary opacity-40">
+          Uplink established // Standing By
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 w-full">
+        <div className="p-3 bg-[var(--eu-bg-card)] border border-[var(--eu-glass-border)] rounded-xl text-left hover:border-primary/30 transition-all cursor-default group">
+          <div className="flex items-center gap-2 mb-1">
+            <Zap size={12} className="text-primary/60 group-hover:text-primary" />
+            <span className="text-[8px] font-black uppercase tracking-widest text-[var(--eu-text-main)]">Console/Net</span>
+          </div>
+          <p className="text-[7px] text-[var(--eu-text-main)] opacity-30 font-mono uppercase tracking-tighter">Diagnostic</p>
+        </div>
+        <div className="p-3 bg-[var(--eu-bg-card)] border border-[var(--eu-glass-border)] rounded-xl text-left hover:border-primary/30 transition-all cursor-default group">
+          <div className="flex items-center gap-2 mb-1">
+            <Globe size={12} className="text-primary/60 group-hover:text-primary" />
+            <span className="text-[8px] font-black uppercase tracking-widest text-[var(--eu-text-main)]">Accessibility</span>
+          </div>
+          <p className="text-[7px] text-[var(--eu-text-main)] opacity-30 font-mono uppercase tracking-tighter">Neural Audit</p>
+        </div>
+        <div className="p-3 bg-[var(--eu-bg-card)] border border-[var(--eu-glass-border)] rounded-xl text-left hover:border-primary/30 transition-all cursor-default group">
+          <div className="flex items-center gap-2 mb-1">
+            <Activity size={12} className="text-primary/60 group-hover:text-primary" />
+            <span className="text-[8px] font-black uppercase tracking-widest text-[var(--eu-text-main)]">UI Layout</span>
+          </div>
+          <p className="text-[7px] text-[var(--eu-text-main)] opacity-30 font-mono uppercase tracking-tighter">Visual QA</p>
+        </div>
+        <div className="p-3 bg-[var(--eu-bg-card)] border border-[var(--eu-glass-border)] rounded-xl text-left hover:border-primary/30 transition-all cursor-default group">
+          <div className="flex items-center gap-2 mb-1">
+            <Sparkles size={12} className="text-primary/60 group-hover:text-primary" />
+            <span className="text-[8px] font-black uppercase tracking-widest text-[var(--eu-text-main)]">Screenshots</span>
+          </div>
+          <p className="text-[7px] text-[var(--eu-text-main)] opacity-30 font-mono uppercase tracking-tighter">Optic Capture</p>
+        </div>
+      </div>
+
+      <p className="text-[8px] text-[var(--eu-text-main)] opacity-20 font-mono max-w-xs mx-auto uppercase tracking-widest font-black">
+        Input infrastructure parameters below to initiate tactical acquisition.
+      </p>
+    </div>
   );
 
   return (
-    <div className="flex flex-col h-full rounded-none md:rounded-[32px] border-x-0 md:border border-eu-glass-border overflow-hidden glass-euphoria shadow-2xl relative transition-all duration-700">
-      {/* Background Glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-1/2 bg-eu-accent/5 blur-[100px] -z-10" />
-
+    <div className="flex flex-col h-full glass-node relative font-inter">
       {/* Header */}
-      <div className="px-4 md:px-8 py-3 md:py-4 border-b border-eu-glass-border flex items-center justify-between bg-eu-bg-card backdrop-blur-3xl transition-colors duration-700">
-        <div className="flex items-center gap-4">
-          <div className="size-10 bg-eu-accent/20 rounded-xl flex items-center justify-center border border-eu-accent/20 shadow-neon">
-            <Bot className="text-eu-accent size-5 animate-pulse" />
-          </div>
-          <div className="flex flex-col">
-            <h3 className="text-[13px] font-black tracking-industrial text-white uppercase premium-gradient-text"></h3>
-            <div className="flex items-center gap-2.5 mt-1">
-              <span className="size-2 rounded-full bg-eu-accent shadow-[0_0_12px_var(--eu-glow)] animate-pulse" />
-            </div>
-          </div>
+      <div className="p-4 sm:p-5 border-b border-[var(--eu-glass-border)] flex items-center justify-between z-10 bg-[var(--eu-bg-void)]">
+        <div className="p-2 border border-[var(--eu-glass-border)] rounded-xl bg-[var(--eu-bg-void)] shadow-sm flex items-center justify-center">
+          <Bot size={20} className="text-[var(--eu-text-main)] opacity-70" />
         </div>
         <div className="flex items-center gap-3">
-          {sessionUrl && activeReportId && (
-            <>
-              <button
-                onClick={handlePinToggle}
-                className={`px-3 py-2 bg-white/5 border border-white/5 rounded-xl transition-all group ${isPinned ? 'border-eu-accent/30 bg-eu-accent/10 shadow-neon' : 'hover:border-white/20'}`}
-                title={isPinned ? "Unpin Session" : "Pin Session"}
-              >
-                <Pin size={14} className={isPinned ? 'text-eu-accent fill-current' : 'text-slate-500 group-hover:text-slate-300'} />
-              </button>
-              <button
-                onClick={() => onViewFullReport(activeReportId)}
-                className="px-4 py-2 bg-eu-accent/10 border border-eu-accent/20 rounded-xl hover:bg-eu-accent/20 transition-all flex items-center gap-2.5 group shadow-neon"
-              >
-              <Layout size={14} className="text-eu-accent group-hover:rotate-45 transition-transform" />
-              <span className="text-[9px] font-black font-mono text-eu-accent uppercase tracking-widest">Full_Report</span>
-              </button>
-            </>
+          {activeReportId && (
+            <button
+              onClick={() => onViewFullReport(activeReportId)}
+              className="px-5 py-1.5 bg-[var(--eu-bg-void)] hover:bg-[var(--eu-hover-bg)] border border-[var(--eu-glass-border)] rounded-lg text-[10px] font-black uppercase tracking-widest text-eu-accent opacity-80 transition-all active:scale-95"
+            >
+              View Report
+            </button>
           )}
           <button
-            onClick={() => {
-              setSessionUrl(null);
-              setMessages([{ id: Date.now(), type: 'ai', text: "Lattice Reset. Provide a New Target Infrastructure URL." }]);
-            }}
-            className="px-3 py-2 bg-white/5 border border-white/5 rounded-xl hover:bg-red-500/10 hover:border-red-500/20 transition-all group"
-            title="Reset Intel"
+            onClick={onResetTarget}
+            className="px-5 py-1.5 bg-[var(--eu-bg-void)] hover:bg-[var(--eu-hover-bg)] border border-[var(--eu-glass-border)] rounded-lg text-[10px] font-black uppercase tracking-widest text-[var(--eu-text-main)] opacity-80 transition-all active:scale-95"
           >
-            <span className="text-[9px] font-black text-slate-500 uppercase group-hover:text-red-400">Reset</span>
+            Reset
           </button>
         </div>
       </div>
 
       {/* Messages */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto p-6 space-y-6 font-outfit custom-scrollbar"
-      >
-        <AnimatePresence initial={false}>
-          {messages.map((msg) => (
-            <motion.div
-              key={msg.id}
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div className={`max-w-[95%] md:max-w-[85%] p-4 md:p-6 rounded-[24px] md:rounded-[32px] text-[13px] md:text-[14px] leading-relaxed relative ${msg.type === 'user'
-                  ? 'bg-gradient-to-br from-eu-accent to-euphoria-violet text-white rounded-tr-none shadow-neon border border-white/10'
-                  : 'glass-euphoria text-white rounded-tl-none border-eu-accent/10'
-                }`}>
-                <div className={`flex items-center gap-2.5 mb-2.5 opacity-50 ${msg.type === 'user' ? 'justify-end' : ''}`}>
-                  {msg.type === 'user' ? <User size={14} className="text-white" /> : <Cpu size={14} className="text-eu-accent" />}
-                  <span className="text-[9px] font-black uppercase tracking-widest font-mono">
-                    {msg.type === 'user' ? 'LEXICON_OPERATOR' : 'INTELLIGENCE_NODE'}
-                  </span>
-                </div>
-
-                <p className={msg.type === 'ai' ? 'font-mono text-sm tracking-tight' : ''}>
-                  {msg.analysis?.summary || msg.text}
-                </p>
-
-                {/* Service Status Board (Modular) */}
-                {msg.recentEvents?.length > 0 && (
-                  <div className="mt-4 p-4 bg-black/40 border border-white/5 rounded-2xl space-y-3 font-mono">
-                    <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-2">
-                      <span className="text-[8px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-1">
-                        <Activity size={10} /> Live_Event_Log
-                      </span>
-                      <span className="text-[7px] text-slate-700 animate-pulse uppercase">Stream_Active</span>
-                    </div>
-                    {msg.recentEvents.map((ev, i) => (
-                      <div key={i} className="flex gap-3 text-[10px] items-start animate-fade-in">
-                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded shrink-0 uppercase tracking-tighter ${ev.type === 'SUCCESS' ? 'bg-emerald-500/10 text-emerald-500' :
-                            ev.type === 'ATTACK' ? 'bg-rose-500/10 text-rose-500' :
-                              'bg-blue-500/10 text-blue-500'
-                          }`}>
-                          {ev.type}
-                        </span>
-                        <span className="text-slate-400 leading-tight">{ev.message}</span>
-                      </div>
-                    ))}
+      <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4 custom-scrollbar z-10 bg-[var(--eu-bg-void)]">
+        {messages.length <= 1 && !activeReportId ? (
+          <WelcomeHero />
+        ) : (
+          <AnimatePresence initial={false}>
+            {messages.map((msg) => (
+              <motion.div
+                key={msg.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div className={`flex flex-col gap-1.5 max-w-[95%] sm:max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  <div className="flex items-center gap-2 px-1">
+                    {msg.role === 'ai' ? (
+                      <Bot size={11} className="text-[var(--eu-text-main)] opacity-40" />
+                    ) : (
+                      <User size={11} className="text-[var(--eu-text-main)] opacity-40" />
+                    )}
+                    <span className="text-[8px] font-black uppercase tracking-[0.2em] text-[var(--eu-text-main)] opacity-30 font-outfit">
+                      {msg.role === 'ai' ? 'INTELLIGENCE_NODE' : 'LEXICON_OPERATOR'}
+                    </span>
                   </div>
-                )}
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
+
+                  <div className={`p-3 sm:p-4 rounded-[18px] border border-[var(--eu-glass-border)] transition-shadow duration-300 ${msg.role === 'user'
+                    ? 'bg-[var(--eu-bg-card)] rounded-tr-lg shadow-sm border-primary/20'
+                    : 'bg-[var(--eu-bg-card)] rounded-tl-lg shadow-sm'
+                    }`}>
+                    {msg.isError && <Lock className="inline-block mr-2 text-primary" size={10} />}
+                    {msg.role === 'ai' ? (
+                      <div className="text-[11px] leading-relaxed text-[var(--eu-text-main)] opacity-90 font-normal prose prose-invert prose-p:my-1 prose-pre:my-2 prose-pre:bg-black/40 prose-pre:p-2 prose-pre:rounded-lg max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {msg.content}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] leading-snug text-[var(--eu-text-main)] opacity-80 font-normal">{msg.content}</p>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        )}
 
         {isTyping && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex justify-start"
-          >
-            <div className="bg-white/5 border border-white/10 p-4 rounded-2xl rounded-tl-none">
-              <Loader2 size={16} className="animate-spin text-primary" />
+          <div className="flex justify-start">
+            <div className="flex gap-1.5 p-3 bg-[var(--eu-bg-card)] rounded-xl border border-[var(--eu-glass-border)]">
+              {[0, 1, 2].map(i => (
+                <motion.div
+                  key={i}
+                  animate={{ scale: [1, 1.2, 1], opacity: [0.3, 1, 0.3] }}
+                  transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+                  className="size-1.5 bg-primary rounded-full"
+                />
+              ))}
             </div>
-          </motion.div>
+          </div>
         )}
+
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggested Actions */}
-      {sessionUrl && !isTyping && (
-        <div className="px-4 md:px-8 py-2 flex gap-4 overflow-x-auto no-scrollbar border-t border-white/5 bg-white/2">
-          <ActionChip icon={Bug} label="Chaos Fuzzing" cmd="Run Chaos Agent on current page" />
-          <ActionChip icon={Shield} label="Security Check" cmd="Audit security headers and SSL" />
-          <ActionChip icon={Zap} label="Full Deep Scan" cmd="Execute full infrastructure diagnostic" />
-          <ActionChip icon={Activity} label="Form Validation" cmd="Test all forms with the Smart Agent" />
-        </div>
-      )}
+      {/* Footer / Input */}
+      <div className="p-3 sm:p-5 bg-[var(--eu-bg-void)] z-10 border-t border-[var(--eu-glass-border)]">
+        <div className="max-w-5xl mx-auto mb-4 space-y-4 px-2 relative">
+          {!activeReportId && (
+            <div className="flex flex-col gap-3 relative">
+              {/* Row 1: Scope & Mode */}
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
+                  <button
+                    onClick={() => setScanParams(p => ({ ...p, scope: 'single' }))}
+                    className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${scanParams.scope === 'single' ? 'bg-primary text-white shadow-neon' : 'text-[var(--eu-text-muted)] hover:text-[var(--eu-text-main)]'
+                      }`}
+                  >
+                    Single Page
+                  </button>
+                  <button
+                    onClick={() => setScanParams(p => ({ ...p, scope: 'site' }))}
+                    className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${scanParams.scope === 'site' ? 'bg-primary text-white shadow-neon' : 'text-[var(--eu-text-muted)] hover:text-[var(--eu-text-main)]'
+                      }`}
+                  >
+                    Full Site
+                  </button>
+                </div>
 
-      {/* Input */}
-      <form onSubmit={handleSend} className="px-4 md:px-8 py-3 md:py-4 bg-white/2 border-t border-white/5 backdrop-blur-3xl">
-        <div className="relative group flex items-center gap-4">
-          <div className="flex-1 relative">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={sessionUrl ? "SYNC_COMMAND_TO_LATTICE..." : "PASTE_TARGET_INFRASTRUCTURE_URL..."}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-3.5 text-[12px] font-mono tracking-widest text-white focus:outline-none focus:border-eu-accent/40 focus:bg-white/10 transition-all uppercase placeholder:text-slate-600 shadow-inner"
-            />
+                <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
+                  <button
+                    onClick={() => setScanParams(p => ({ ...p, mode: 'specific' }))}
+                    className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${scanParams.mode === 'specific' ? 'bg-primary/20 text-primary border border-primary/30' : 'text-[var(--eu-text-muted)] hover:text-[var(--eu-text-main)]'
+                      }`}
+                  >
+                    Specific
+                  </button>
+                  <button
+                    onClick={() => { setScanParams(p => ({ ...p, mode: 'full' })); setShowSensors(false); }}
+                    className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${scanParams.mode === 'full' ? 'bg-primary/20 text-primary border border-primary/30' : 'text-[var(--eu-text-muted)] hover:text-[var(--eu-text-main)]'
+                      }`}
+                  >
+                    Full Audit
+                  </button>
+                </div>
+                {scanParams.mode === 'specific' && (
+                  <button
+                    onClick={() => setShowSensors(!showSensors)}
+                    className={`px-4 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-neon ${showSensors ? 'bg-primary border border-primary text-[var(--eu-bg-card)]' : 'bg-[var(--eu-bg-void)] border border-white/10 text-primary hover:bg-white/5'}`}
+                  >
+                    Configure Sensors ({scanParams.tests.length})
+                    <ChevronUp size={12} className={`transition-transform duration-300 ${showSensors ? 'rotate-180' : ''}`} />
+                  </button>
+                )}
+              </div>
+
+              {/* Row 2: Tests Dropdown */}
+              <AnimatePresence>
+                {scanParams.mode === 'specific' && showSensors && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 20, scale: 0.95 }}
+                    className="absolute bottom-full mb-4 left-0 right-0 p-5 bg-[var(--eu-bg-card)] border border-[var(--eu-glass-border)] rounded-2xl shadow-2xl z-50 glass-modal transform origin-bottom"
+                  >
+                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/5">
+                      <div className="flex items-center gap-2">
+                        <Zap size={14} className="text-primary" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-[var(--eu-text-main)]">Active Neural Sensors</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setScanParams(p => ({ ...p, tests: ['console', 'network', 'forms', 'ui', 'lighthouse', 'accessibility', 'links'] }))}
+                          className="px-2 py-1 rounded-md bg-white/5 text-[8px] font-black uppercase tracking-widest text-[var(--eu-text-main)] hover:bg-primary/20 hover:text-primary transition-colors border border-white/5"
+                        >
+                          Select All
+                        </button>
+                        <button
+                          onClick={() => setScanParams(p => ({ ...p, tests: [] }))}
+                          className="px-2 py-1 rounded-md bg-white/5 text-[8px] font-black uppercase tracking-widest text-[var(--eu-text-muted)] hover:bg-white/10 hover:text-white transition-colors border border-white/5"
+                        >
+                          Clear
+                        </button>
+                        <button onClick={() => setShowSensors(false)} className="text-[var(--eu-text-muted)] hover:text-primary transition-colors p-1 ml-1"><Plus size={14} className="rotate-45" /></button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {['console', 'network', 'forms', 'ui', 'lighthouse', 'accessibility', 'links'].map(test => {
+                        const labelMap = {
+                          'console': 'Console Logs',
+                          'network': 'Network Health',
+                          'forms': 'Basic Forms',
+                          'ui': 'UI/UX Layout',
+                          'lighthouse': 'Lighthouse (SEO/Perf)',
+                          'accessibility': 'Accessibility',
+                          'links': 'Broken Links'
+                        };
+                        const isActive = scanParams.tests.includes(test);
+                        return (
+                          <button
+                            key={test}
+                            onClick={() => toggleTest(test)}
+                            className={`flex items-center justify-between p-3 rounded-xl transition-all border group ${isActive
+                              ? 'bg-primary/10 text-primary border-primary/30 shadow-neon-small ring-1 ring-primary/20'
+                              : 'bg-white/5 text-[var(--eu-text-muted)] border-transparent hover:border-white/10 hover:bg-white/10'
+                              }`}
+                          >
+                            <span className={`text-[9px] font-black uppercase tracking-widest text-left leading-tight ${isActive ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'}`}>
+                              {labelMap[test] || test.replace('_', ' ')}
+                            </span>
+                            <div className={`size-3 shrink-0 rounded-full border flex items-center justify-center transition-colors ${isActive ? 'bg-primary border-primary text-[var(--eu-bg-card)]' : 'border-[var(--eu-text-muted)] opacity-30 group-hover:border-[var(--eu-text-main)] group-hover:opacity-60'}`}>
+                              {isActive && <Check size={8} strokeWidth={4} />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+          <div className="flex items-center gap-2 opacity-30">
+            <Activity size={10} className="text-primary" />
+            <span className="text-[8px] font-black uppercase tracking-widest text-[var(--eu-text-main)]">
+              Tactical Config: {scanParams.mode === 'full' ? 'DEEP_SPECTRUM' : `${scanParams.scope.toUpperCase()}_${scanParams.tests.length}_MODULES`}
+            </span>
           </div>
+        </div>
+
+        <form onSubmit={handleSend} className="relative max-w-5xl mx-auto">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="PASTE_TARGET_INFRASTRUCTURE_URL..."
+            className="w-full bg-[var(--eu-bg-card)] border-none rounded-xl py-3 px-6 text-[10px] text-[var(--eu-text-main)] focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-[var(--eu-text-main)] placeholder:opacity-20 font-outfit uppercase tracking-widest font-black"
+          />
           <button
             type="submit"
-            disabled={isTyping || !input.trim()}
-            className="size-12 bg-eu-accent text-white rounded-2xl shadow-neon hover:scale-110 active:scale-95 transition-all flex items-center justify-center disabled:opacity-20 group"
+            disabled={!input.trim() || isTyping}
+            className={`absolute right-6 top-1/2 -translate-y-1/2 p-2 transition-all ${input.trim() && !isTyping
+              ? 'text-primary hover:scale-110'
+              : 'text-[var(--eu-text-main)] opacity-10'
+              }`}
           >
-            <Send size={18} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+            <Send size={22} className="rotate-0" />
           </button>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
+
   );
 };
 

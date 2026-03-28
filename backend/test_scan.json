@@ -1,0 +1,9 @@
+{
+  "url": "https://example.com",
+  "userId": "test-user-123",
+  "force": true,
+  "singlePageOnly": true,
+  "tests": ["console", "network", "ui", "lighthouse", "accessibility", "links", "forms"],
+  "scope": "single",
+  "mode": "full"
+}

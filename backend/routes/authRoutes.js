@@ -37,7 +37,9 @@ router.post('/signup', async (req, res) => {
         res.status(201).json({
             message: 'User created successfully',
             token,
-            userId: user._id
+            userId: user._id,
+            username: user.username,
+            email: user.email
         });
     } catch (error) {
         console.error('Signup Error:', error);
@@ -82,7 +84,8 @@ router.post('/login', async (req, res) => {
             message: 'Login successful',
             token,
             userId: user._id,
-            username: user.username
+            username: user.username,
+            email: user.email
         });
     } catch (error) {
         console.error('Login Error:', error);

@@ -1,0 +1,286 @@
+[
+  {
+    "pattern": "network_500_error",
+    "issue": "Internal Server Error (500)",
+    "reason": "The server encountered an unexpected condition that prevented it from fulfilling the request. Often caused by unhandled exceptions in the backend route or database timeout.",
+    "fix": [
+      "Check backend application logs for stack traces.",
+      "Ensure database connections are alive.",
+      "Wrap asynchronous route handlers in robust try/catch blocks."
+    ],
+    "severity": "Critical",
+    "suggested_pattern": "network_500_error",
+    "remediationCode": "app.get('/api/data', async (req, res, next) => {\n  try {\n    const data = await db.fetch();\n    res.json(data);\n  } catch (err) {\n    console.error('Database Error:', err);\n    res.status(500).json({ error: 'Internal Server Error' });\n  }\n});"
+  },
+  {
+    "pattern": "network_4xx_error",
+    "issue": "Client-Side Request Error (4xx)",
+    "reason": "The client made a request that the server cannot process. This typically means a broken API endpoint, missing authorization headers, or malformed JSON payloads.",
+    "fix": [
+      "Validate the request payload format strictly matches the backend schema.",
+      "Verify that the Authorization headers (e.g. Bearer token) are pushed correctly.",
+      "Check if the API endpoint URL in the frontend fetch/axios call is correct."
+    ],
+    "severity": "High",
+    "suggested_pattern": "network_4xx_error",
+    "remediationCode": "axios.post('/api/endpoint', payload, {\n  headers: {\n    'Authorization': `Bearer ${localStorage.getItem('token')}`,\n    'Content-Type': 'application/json'\n  }\n});"
+  },
+  {
+    "pattern": "network_401_unauthorized",
+    "issue": "Unauthorized Access (401)",
+    "reason": "The user is attempting to access a protected route without a valid authentication token, or the token has expired.",
+    "fix": [
+      "Check local storage/cookies for the presence of a valid JWT or session token.",
+      "Redirect the user to the login page if the token is null.",
+      "Implement a token refresh interceptor in your HTTP client."
+    ],
+    "severity": "High",
+    "suggested_pattern": "network_401_unauthorized",
+    "remediationCode": "axios.interceptors.response.use(res => res, error => {\n  if (error.response?.status === 401) {\n    window.location.href = '/login';\n  }\n  return Promise.reject(error);\n});"
+  },
+  {
+    "pattern": "network_403_forbidden",
+    "issue": "Forbidden Access (403)",
+    "reason": "The user is authenticated but does not have the correct administrative or role-based permissions to access this resource.",
+    "fix": [
+      "Verify the user's role array matches the route requirements.",
+      "Ensure the backend middleware correctly parses and applies authorization scopes.",
+      "Hide UI elements that the user cannot interact with."
+    ],
+    "severity": "High",
+    "suggested_pattern": "network_403_forbidden",
+    "remediationCode": "// Express Middleware Example\nfunction requireRole(role) {\n  return (req, res, next) => {\n    if (req.user && req.user.role === role) next();\n    else res.status(403).json({ error: 'Forbidden' });\n  };\n}"
+  },
+  {
+    "pattern": "network_404_not_found",
+    "issue": "Resource Not Found (404)",
+    "reason": "The requested API endpoint or dynamic route parameter does not exist on the server.",
+    "fix": [
+      "Verify the spelling and path of the requested URL.",
+      "Ensure dynamic route parameters (like IDs) actually correspond to existing database records.",
+      "Add a global 404 fallback route in the backend."
+    ],
+    "severity": "Medium",
+    "suggested_pattern": "network_404_not_found",
+    "remediationCode": "app.use((req, res, next) => {\n  res.status(404).json({ error: 'Global 404: Endpoint not found.' });\n});"
+  },
+  {
+    "pattern": "network_cors_error",
+    "issue": "Cross-Origin Resource Sharing (CORS) Blocked",
+    "reason": "The browser blocked the fetch request because the backend server did not return the required Access-Control-Allow-Origin headers.",
+    "fix": [
+      "Install the 'cors' package in your backend.",
+      "Whitelist the exact frontend domain (e.g. localhost:5173).",
+      "Ensure preflight OPTIONS requests are handled successfully."
+    ],
+    "severity": "Critical",
+    "suggested_pattern": "network_cors_error",
+    "remediationCode": "const cors = require('cors');\napp.use(cors({\n  origin: ['http://localhost:5173', 'https://yourdomain.com'],\n  credentials: true\n}));"
+  },
+  {
+    "pattern": "network_broken_link",
+    "issue": "Broken Navigation Links Identified",
+    "reason": "Anchor tags (<a>) on the DOM point to routes that return 404 Not Found, creating structural dead-ends for the user and search engines.",
+    "fix": [
+      "Identify the broken href attributes in your site navigation or footer.",
+      "Redirect deprecated URLs to their modern equivalents using 301 redirects.",
+      "Implement a link-checking step in your CI/CD pipeline."
+    ],
+    "severity": "Medium",
+    "suggested_pattern": "network_broken_link",
+    "remediationCode": "<!-- Example standard fix for broken anchor -->\n<a href=\"/new-valid-route\" aria-label=\"Read more about our valid route\">\n  Valid Link Destination\n</a>"
+  },
+  {
+    "pattern": "console_TypeError",
+    "issue": "Uncaught TypeError",
+    "reason": "JavaScript encountered a null or undefined reference during a property lookup. This breaks interactive UI components across the page.",
+    "fix": [
+      "Implement optional chaining (?.) on deeply nested object structures.",
+      "Add null-checks before mapping arrays or accessing DOM elements.",
+      "Utilize TypeScript for stronger compile-time type guarantees."
+    ],
+    "severity": "Critical",
+    "suggested_pattern": "console_TypeError",
+    "remediationCode": "// Use Optional Chaining to prevent breaking the app\nconst userName = userProfile?.data?.name || 'Guest User';\n\n// Safe Array Mapping\n(items || []).map(item => {\n  return <div>{item.title}</div>;\n});"
+  },
+  {
+    "pattern": "console_ReferenceError",
+    "issue": "Uncaught ReferenceError",
+    "reason": "Code attempted to access a variable that has not been declared or is out of scope.",
+    "fix": [
+      "Ensure all variables are declared with let/const before use.",
+      "Check for typos in variable or function names.",
+      "Verify that external scripts or modules have loaded properly."
+    ],
+    "severity": "Critical",
+    "suggested_pattern": "console_ReferenceError",
+    "remediationCode": "let dataList = [];\ntry {\n  dataList = await fetch('/api/data');\n} catch(e) {\n  console.error(e);\n}\nconsole.log(dataList); // Valid reference"
+  },
+  {
+    "pattern": "console_SyntaxError",
+    "issue": "Uncaught SyntaxError",
+    "reason": "The JavaScript engine encountered invalid language syntax, typically a missing brace, comma, or parenthesis, preventing execution entirely.",
+    "fix": [
+      "Check your bundler (Webpack/Vite) output for compilation errors.",
+      "Ensure all JSON strings are properly quoted and valid.",
+      "Look for orphaned brackets in the specified file line."
+    ],
+    "severity": "Critical",
+    "suggested_pattern": "console_SyntaxError",
+    "remediationCode": "// Example of valid JSON parsing (Common SyntaxError trigger)\ntry {\n  const parsed = JSON.parse(rawData);\n} catch(e) {\n  console.error('Invalid JSON stream:', e);\n}"
+  },
+  {
+    "pattern": "console_UnhandledPromise",
+    "issue": "Unhandled Promise Rejection",
+    "reason": "An asynchronous operation failed, but no '.catch()' block or 'try/catch' was provided to gracefully handle the error.",
+    "fix": [
+      "Wrap all await calls inside try/catch blocks.",
+      "Append .catch() to all raw Promise chains.",
+      "Provide user feedback (toasts/alerts) when an async UI action fails."
+    ],
+    "severity": "High",
+    "suggested_pattern": "console_UnhandledPromise",
+    "remediationCode": "async function fetchData() {\n  try {\n    const response = await fetch('/api');\n    if (!response.ok) throw new Error('Bad response');\n  } catch (error) {\n    alert('Failed to load data. Please try again.');\n    console.error(error);\n  }\n}"
+  },
+  {
+    "pattern": "ui_layout_shift",
+    "issue": "Cumulative Layout Shift (CLS)",
+    "reason": "Elements dynamically loaded into the DOM without predefined dimensions caused massive layout repaints.",
+    "fix": [
+      "Define standard aspect ratios or fixed dimensions for ALL images and iframes.",
+      "Pre-allocate space for dynamic banners or ads.",
+      "Load fonts pre-emptively to avoid text flashing."
+    ],
+    "severity": "Medium",
+    "suggested_pattern": "ui_layout_shift",
+    "remediationCode": "/* CSS Fix: Reserve structural space for unloaded media */\n.image-container {\n  aspect-ratio: 16 / 9;\n  width: 100%;\n  background-color: var(--skeleton-loader-color, #eee);\n  overflow: hidden;\n}\n\nimg {\n  width: 100%;\n  height: 100%;\n  object-fit: cover;\n}"
+  },
+  {
+    "pattern": "accessibility_violation",
+    "issue": "WCAG A11y Violations Found",
+    "reason": "Elements lack ARIA labels, semantic structure, or keyboard interactivity, making the site hostile to screen readers.",
+    "fix": [
+      "Provide robust 'aria-label' or 'alt' attributes to all non-text elements.",
+      "Ensure interactive elements (divs acting as buttons) have 'tabIndex=0' and keydown listeners.",
+      "Refactor non-semantic layouts to use <nav>, <main>, and <article> tags."
+    ],
+    "severity": "Low",
+    "suggested_pattern": "accessibility_violation",
+    "remediationCode": "<!-- Replace a div button with semantic HTML or proper ARIA -->\n<button \n  onClick={handleAction}\n  aria-label=\"Submit Form Data\"\n  className=\"btn-primary\">\n  Submit\n</button>"
+  },
+  {
+    "pattern": "perf_slow_load",
+    "issue": "Sub-Optimal Network Throughput (Slow Load)",
+    "reason": "Document parsing exceeded 3000ms. Often caused by unoptimized images, render-blocking scripts, or a bloated main thread.",
+    "fix": [
+      "Implement lazy-loading for offscreen images and heavy components.",
+      "Minify and compress your distribution bundles via gzip or brotli.",
+      "Deploy static assets via a global Edge CDN."
+    ],
+    "severity": "High",
+    "suggested_pattern": "perf_slow_load",
+    "remediationCode": "import React, { Suspense, lazy } from 'react';\n\n// Code Splitting Strategy for React\nconst HeavyComponent = lazy(() => import('./HeavyComponent'));\n\nfunction App() {\n  return (\n    <Suspense fallback={<LoadingSpinner />}>\n      <HeavyComponent />\n    </Suspense>\n  );\n}"
+  },
+  {
+    "pattern": "security_mixed_content",
+    "issue": "Mixed Content Blocked (HTTP on HTTPS)",
+    "reason": "The browser blocked requests to insecure HTTP URLs while the main application is running on secure HTTPS.",
+    "fix": [
+      "Use protocol-relative URLs (starting with //) or explicitly rewrite all HTTP to HTTPS.",
+      "Configure your web server to redirect HTTP traffic to HTTPS via a 301.",
+      "Add the 'Content-Security-Policy: upgrade-insecure-requests' header."
+    ],
+    "severity": "High",
+    "suggested_pattern": "security_mixed_content",
+    "remediationCode": "<!-- Apply meta tag to upgrade insecure assets automatically -->\n<meta http-equiv=\"Content-Security-Policy\" content=\"upgrade-insecure-requests\">"
+  },
+  {
+    "pattern": "security_violation",
+    "issue": "Security Violation Detected",
+    "reason": "A critical deviation from standard front-end or endpoint security protocols has been logged.",
+    "fix": [
+      "Implement rate-limiting to block brute-force attempts.",
+      "Sanitize output immediately before rendering to the DOM to prevent XSS.",
+      "Ensure secure cookies with HttpOnly and SameSite flags."
+    ],
+    "severity": "Critical",
+    "suggested_pattern": "security_violation",
+    "remediationCode": "// Setting secure, HttpOnly cookies in Express\nres.cookie('session_token', token, {\n  httpOnly: true,\n  secure: process.env.NODE_ENV === 'production',\n  sameSite: 'strict',\n  maxAge: 3600000 // 1 hour\n});"
+  },
+  {
+    "pattern": "accessibility_missing_alt",
+    "issue": "Image(s) Missing Alt Text",
+    "reason": "Images without alt attributes are invisible to screen readers, making the content inaccessible to visually impaired users.",
+    "fix": [
+      "Add a descriptive 'alt' attribute to all <img> tags.",
+      "For decorative images, use an empty alt attribute (alt=\"\").",
+      "Ensure the alt text actually describes the image content."
+    ],
+    "severity": "Medium",
+    "suggested_pattern": "accessibility_missing_alt",
+    "remediationCode": "<!-- Good: Descriptive alt text -->\n<img src=\"product.jpg\" alt=\"Blue denim jacket with gold buttons\">\n\n<!-- Good: Decorative image -->\n<img src=\"divider.png\" alt=\"\">"
+  },
+  {
+    "pattern": "ui_disabled_element",
+    "issue": "Disabled Interactive Element",
+    "reason": "Interactive elements (buttons, inputs) are disabled without providing feedback or a way for the user to understand why, which causes frustration.",
+    "fix": [
+      "Add a tooltip or hint explaining why the element is disabled.",
+      "Use 'aria-disabled=\"true\"' instead of the 'disabled' attribute if the element should remain focusable.",
+      "Ensure disabled states have sufficient color contrast."
+    ],
+    "severity": "Low",
+    "suggested_pattern": "ui_disabled_element",
+    "remediationCode": "<!-- Use aria-disabled for better accessibility feedback -->\n<button \n  aria-disabled=\"true\" \n  title=\"Please complete all required fields first\" \n  className=\"opacity-50 cursor-not-allowed\">\n  Submit\n</button>"
+  },
+  {
+    "pattern": "network_dead_link",
+    "issue": "Dead Navigation Link",
+    "reason": "A navigation link points to a destination that no longer exists (404), leading to a 'dead end' for both users and crawlers.",
+    "fix": [
+      "Identify the dead href and update it to the correct destination.",
+      "If the page has moved permanently, implement a 301 redirect on the server.",
+      "Remove legacy links that are no longer relevant to the site mapping."
+    ],
+    "severity": "Medium",
+    "suggested_pattern": "network_dead_link",
+    "remediationCode": "// Express 301 Redirect Example\napp.get('/old-service-link', (req, res) => {\n  res.redirect(301, '/services/new-platform');\n});"
+  },
+  {
+    "pattern": "security_hsts_missing",
+    "issue": "Missing HSTS Header",
+    "reason": "The Strict-Transport-Security header is missing, which prevents the browser from enforcing HTTPS usage, leaving the user vulnerable to SSL stripping attacks.",
+    "fix": [
+      "Add the Strict-Transport-Security header to all server responses.",
+      "Set a max-age of at least 31536000 seconds (1 year).",
+      "Include the includeSubDomains directive for full domain protection."
+    ],
+    "severity": "High",
+    "suggested_pattern": "security_hsts_missing",
+    "remediationCode": "const helmet = require('helmet');\napp.use(helmet.hsts({\n  maxAge: 31536000,\n  includeSubDomains: true,\n  preload: true\n}));"
+  },
+  {
+    "pattern": "security_x_content_type_missing",
+    "issue": "Missing X-Content-Type-Options",
+    "reason": "The X-Content-Type-Options: nosniff header is missing, allowing browsers to MIME-sniff the response away from the declared content-type, which can lead to script injection.",
+    "fix": [
+      "Add the X-Content-Type-Options: nosniff header to your backend configuration.",
+      "In Express, use helmet.noSniff() middleware."
+    ],
+    "severity": "Medium",
+    "suggested_pattern": "security_x_content_type_missing",
+    "remediationCode": "const helmet = require('helmet');\napp.use(helmet.noSniff());"
+  },
+  {
+    "pattern": "security_referrer_policy_missing",
+    "issue": "Missing Referrer-Policy",
+    "reason": "The Referrer-Policy header defines how much referrer information (sent via the Referer header) should be included with requests.",
+    "fix": [
+      "Implement a strict Referrer-Policy like 'same-origin' or 'no-referrer'.",
+      "In Express, use helmet.referrerPolicy() to set a safe default."
+    ],
+    "severity": "Low",
+    "suggested_pattern": "security_referrer_policy_missing",
+    "remediationCode": "const helmet = require('helmet');\napp.use(helmet.referrerPolicy({ policy: 'same-origin' }));"
+  }
+]

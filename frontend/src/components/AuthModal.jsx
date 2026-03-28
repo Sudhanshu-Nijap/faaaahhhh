@@ -46,18 +46,20 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
         username: isLogin ? undefined : username
       });
 
-      const { token, userId } = response.data;
+      const { token, userId, username: resUsername, email: resEmail } = response.data;
       
       console.log("Authentication Successful. Initializing Identity...");
       localStorage.setItem('token', token);
       localStorage.setItem('userId', userId);
+      localStorage.setItem('userData', JSON.stringify({ username: resUsername, email: resEmail }));
       
       // Force a clean state refresh
       onLogin();
       onClose();
     } catch (err) {
-      console.error("Auth System Error:", err.response?.data);
-      setError(err.response?.data?.message || 'Protocol Initialization Failed: Check Credentials');
+      console.error("Auth System Error:", err);
+      const message = err.response?.data?.message || err.message || 'Protocol Initialization Failed: Check Credentials';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -70,7 +72,7 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="absolute inset-0 bg-black/80 backdrop-blur-md"
+        className="absolute inset-0 glass-overlay"
       />
 
       <motion.div
@@ -78,7 +80,7 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 30 }}
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="relative w-full max-w-md glass-card glow-shadow overflow-hidden p-8"
+        className="relative w-full max-w-md glass-modal glow-shadow overflow-hidden p-8 rounded-[32px]"
       >
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-50" />
 
@@ -97,7 +99,7 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
           </div>
 
           <div className="text-center mb-10">
-            <h2 className="text-3xl font-black text-white mb-3 tracking-tight">
+            <h2 className="text-3xl font-black text-[var(--eu-text-main)] mb-3 tracking-tight">
               {isLogin ? 'Proprietary Access' : 'Create Intelligence'}
             </h2>
             <p className="text-sm text-text-muted leading-relaxed">
@@ -106,7 +108,7 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
           </div>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-500 text-xs font-bold uppercase tracking-widest">
+            <div className="mb-6 p-4 bg-primary/10 border border-primary/20 rounded-xl flex items-center gap-3 text-primary text-xs font-bold uppercase tracking-widest">
               <AlertCircle size={16} />
               <span>{error}</span>
             </div>
@@ -186,7 +188,7 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
                   setIsLogin(!isLogin);
                   setError('');
                 }}
-                className="text-primary hover:text-white transition-colors underline underline-offset-8 font-bold ml-1 uppercase text-xs tracking-widest"
+                className="text-primary hover:text-[var(--eu-text-main)] transition-colors underline underline-offset-8 font-bold ml-1 uppercase text-xs tracking-widest"
               >
                 {isLogin ? 'Join Sentinel' : 'Log In'}
               </button>

@@ -45,7 +45,7 @@ const BentoDashboard = ({ onScanStarted, onSelectReport, refreshKey, theme }) =>
            initial={{ opacity: 0, y: 40 }}
            animate={{ opacity: 1, y: 0 }}
            transition={{ delay: 0.2, duration: 0.8 }}
-           className="glass-panel rounded-[32px] p-6 sm:p-12 border-white/5 flex flex-col min-h-[500px]"
+           className="glass-panel rounded-[32px] p-6 sm:p-12 border-[var(--eu-glass-border)] flex flex-col min-h-[500px]"
         >
           <div className="flex items-center gap-4 sm:gap-6 mb-8 sm:mb-12">
             <div className="h-px w-12 sm:w-16 bg-primary/40" />

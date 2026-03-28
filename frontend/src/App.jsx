@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import io from 'socket.io-client';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldCheck, Shield, Bug, Activity, Command, Github as GitHubIcon, Twitter, Cpu, Layout, Terminal, Lock, Zap, MousePointer2 } from 'lucide-react';
+import { ShieldCheck, Shield, Bug, Activity, Command, Github as GitHubIcon, Twitter, Cpu, Layout, Terminal, Lock, Zap, MousePointer2, Skull, X } from 'lucide-react';
+import axios from 'axios';
+
 import ScanForm from './components/ScanForm';
 import ReportDashboard from './components/ReportDashboard';
 import BentoDashboard from './components/BentoDashboard';
 import ReportDetail from './components/ReportDetail';
+import GlobalIntelligence from './components/GlobalIntelligence';
 import AuthModal from './components/AuthModal';
 import HowItWorks from './components/HowItWorks';
 import AboutUs from './components/AboutUs';
@@ -13,11 +17,16 @@ import Capabilities from './components/Capabilities';
 import LiveFuzzingConsole from './components/LiveFuzzingConsole';
 import ChatSidebar from './components/ChatSidebar';
 import ChatInterface from './components/ChatInterface';
-
+import LoadingScreen from './components/LoadingScreen';
 import Footer from './components/Footer';
 
 function App() {
-  const [activeReportId, setActiveReportId] = useState(null);
+  const [activeReportId, setActiveReportId] = useState(() => localStorage.getItem('sentinel_active_report') || null);
+
+  useEffect(() => {
+    if (activeReportId) localStorage.setItem('sentinel_active_report', activeReportId);
+    else localStorage.removeItem('sentinel_active_report');
+  }, [activeReportId]);
   const [viewingReportId, setViewingReportId] = useState(null);
   const [liveReportId, setLiveReportId] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -26,10 +35,24 @@ function App() {
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   const [showReportList, setShowReportList] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [scanProgress, setScanProgress] = useState(null);
+  const [alert, setAlert] = useState(null); // { type: 'success' | 'error' | 'info', message: string }
+  const [confirmModal, setConfirmModal] = useState(null); // { title, message, onConfirm, onCancel, confirmText, type, showInput }
+  const [showGlobalStats, setShowGlobalStats] = useState(false);
+  const [reports, setReports] = useState([]);
+  const [pendingChatMessage, setPendingChatMessage] = useState(null); // NEW: Queue for manual AI queries
+  const [chatKey, setChatKey] = useState(0); // NEW: Forcing ChatInterface reset
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    // Also set Tailwind dark class for dark: prefixes (used by Euphoria menu)
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -46,12 +69,83 @@ function App() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  const fetchReports = async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      if (!userId) return;
+      const { data } = await axios.get(`http://localhost:5000/api/reports?userId=${userId}`);
+      setReports(data);
+    } catch (err) {
+      console.error("Failed to sync reports for global intelligence", err);
+    }
+  };
+
+  const fetchActiveScan = async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      if (!userId) return;
+      const { data } = await axios.get(`http://localhost:5000/api/scan/active/${userId}`);
+      if (data && data._id) {
+        setActiveReportId(data._id);
+        // REMOVED: setRefreshKey - this caused the infinite loop
+      }
+    } catch (err) {
+      // No active scan, silent skip
+    }
+  };
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchReports();
+      fetchActiveScan();
+    }
+  }, [isLoggedIn]); // REMOVED: refreshKey from dependency to stop the loop
+
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   const handleScanStarted = (reportId) => {
     setLiveReportId(reportId);
     setRefreshKey(prev => prev + 1);
   };
+
+  // Initial load of scan progress from cache
+  useEffect(() => {
+     const cached = localStorage.getItem('sentinel_pending_progress');
+     if (cached) {
+       try {
+         setScanProgress(JSON.parse(cached));
+       } catch (e) {
+         localStorage.removeItem('sentinel_pending_progress');
+       }
+     }
+  }, []);
+
+  useEffect(() => {
+    const socket = io('http://localhost:5000');
+    
+    socket.on('connect', () => {
+      console.log('[Socket]: Reconnected. Syncing rooms...');
+      if (activeReportId) {
+        socket.emit('join-room', activeReportId);
+      }
+    });
+
+    socket.on('scan-progress', (data) => {
+      setScanProgress(data);
+      // Persist progress to handle reloads
+      localStorage.setItem('sentinel_pending_progress', JSON.stringify(data));
+
+      if (data.status === 'completed' || data.status === 'failed') {
+        localStorage.removeItem('sentinel_pending_progress');
+        setTimeout(() => setScanProgress(null), 5000);
+      }
+    });
+    return () => socket.disconnect();
+  }, [activeReportId]);
 
   const handleLogin = () => {
     setIsLoggedIn(true);
@@ -66,12 +160,113 @@ function App() {
     setRefreshKey(prev => prev + 1);
   };
 
+  const handleReScan = async (url) => {
+    try {
+      const userId = localStorage.getItem('userId');
+      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/scan`, {
+        url,
+        userId,
+        force: true
+      });
+      if (response.data.reportId) {
+        handleScanStarted(response.data.reportId);
+        setViewingReportId(null);
+        setAlert({ type: 'info', message: 'Re-scan initiated. Monitoring neural downlink...' });
+      }
+    } catch (error) {
+      console.error('Re-scan failed', error);
+      setAlert({ type: 'error', message: 'Target acquisition failed. Check backend uplink.' });
+    }
+  };
+
+  useEffect(() => {
+    if (alert) {
+      const timer = setTimeout(() => setAlert(null), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [alert]);
+
+  const confirm = (options) => {
+    return new Promise((resolve) => {
+      setConfirmModal({
+        ...options,
+        onConfirm: () => {
+          setConfirmModal(null);
+          resolve(true);
+        },
+        onCancel: () => {
+          setConfirmModal(null);
+          resolve(false);
+        }
+      });
+    });
+  };
+
+  const prompt = (options) => {
+    return new Promise((resolve) => {
+      setConfirmModal({
+        ...options,
+        showInput: true,
+        onConfirm: (val) => {
+          setConfirmModal(null);
+          resolve(val);
+        },
+        onCancel: () => {
+          setConfirmModal(null);
+          resolve(null);
+        }
+      });
+    });
+  };
 
   return (
     <div className="relative min-h-screen selection:bg-primary/30 overflow-x-hidden transition-colors duration-700">
-      <div className="background-system" />
-      <div className="dreamy-blob top-[-10%] left-[-10%] animate-dreamy opacity-20" />
-      <div className="dreamy-blob bottom-[-10%] right-[-10%] animate-dreamy opacity-10 [animation-delay:4s]" />
+      <AnimatePresence mode="wait">
+        {isLoading && <LoadingScreen key="loader" />}
+      </AnimatePresence>
+
+      {/* Global Alert System - Top Layer */}
+      <AnimatePresence>
+        {alert && (
+          <motion.div
+            initial={{ x: 300, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 300, opacity: 0 }}
+            className="fixed top-24 right-6 z-[9999] p-1 rounded-2xl overflow-hidden shadow-2xl backdrop-blur-xl border border-[var(--eu-glass-border)]"
+          >
+            <div className="flex items-center gap-4 px-6 py-4 bg-[var(--eu-bg-void)] relative backdrop-blur-3xl">
+              <div className={`size-10 rounded-xl flex items-center justify-center border ${alert.type === 'error' ? 'bg-primary/10 border-primary/30 text-primary' :
+                alert.type === 'success' ? 'bg-primary/10 border-primary/30 text-primary' :
+                  'bg-primary/10 border-primary/30 text-primary'
+                }`}>
+                {alert.type === 'error' ? <Bug size={18} /> :
+                  alert.type === 'success' ? <ShieldCheck size={18} /> :
+                    <Activity size={18} className="animate-pulse" />}
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted font-outfit">Status Uplink</p>
+                <p className="text-xs font-bold text-white max-w-[240px] leading-tight mt-0.5">{alert.message}</p>
+              </div>
+              <button onClick={() => setAlert(null)} className="ml-4 p-1 hover:bg-[var(--eu-bg-void)]/40 rounded-lg text-muted">
+                <Command size={14} className="rotate-45" />
+              </button>
+
+              <motion.div
+                className={`absolute bottom-0 left-0 h-[2px] ${alert.type === 'error' ? 'bg-primary' :
+                  alert.type === 'success' ? 'bg-primary' :
+                    'bg-primary'
+                  }`}
+                initial={{ width: '100%' }}
+                animate={{ width: '0%' }}
+                transition={{ duration: 6 }}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* <div className="dreamy-blob top-[-10%] left-[-10%] animate-dreamy opacity-20" />
+      <div className="dreamy-blob bottom-[-10%] right-[-10%] animate-dreamy opacity-10 [animation-delay:4s]" /> */}
       <div className="noise-overlay" />
 
       {/* Header */}
@@ -80,17 +275,16 @@ function App() {
           initial={{ y: -100, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -100, opacity: 0 }}
-          className={`fixed z-50 transition-all duration-700 ${
-            isLoggedIn 
-              ? "top-0 left-0 w-full px-4 py-2 sm:px-6 sm:py-3 bg-background-void/80 backdrop-blur-xl border-b border-white/5" 
-              : "top-4 left-1/2 -translate-x-1/2 w-[95%] max-w-7xl px-4 py-3 md:px-8 md:py-4 glass-euphoria border border-white/10 shadow-2xl rounded-[24px] md:rounded-[32px]"
-          } flex items-center justify-between`}
+          className={`fixed z-50 transition-all duration-700 ${isLoggedIn
+            ? "top-0 left-0 w-full px-4 py-2 sm:px-6 sm:py-3 bg-[var(--eu-bg-void)] border-b border-[var(--eu-glass-border)]"
+            : "top-4 left-1/2 -translate-x-1/2 w-[95%] max-w-7xl px-4 py-3 md:px-8 md:py-4 glass-euphoria border border-[var(--eu-glass-border)] shadow-2xl rounded-[24px] md:rounded-[32px]"
+            } flex items-center justify-between`}
         >
           <div className="flex items-center gap-2 sm:gap-4">
             {isLoggedIn && (
-              <button 
+              <button
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="lg:hidden p-2 hover:bg-white/5 rounded-xl transition-colors"
+                className="lg:hidden p-2 hover:bg-[var(--eu-bg-void)]/40 rounded-xl transition-colors"
                 title="Toggle Sidebar"
               >
                 <Command size={18} className="text-primary" />
@@ -110,10 +304,10 @@ function App() {
                 { name: 'How it works', href: '#how-it-works' },
                 { name: 'About us', href: '#about-us' }
               ].map((link) => (
-                <a 
+                <a
                   key={link.name}
                   href={link.href}
-                  className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 hover:text-eu-accent transition-all relative group"
+                  className="text-[10px] font-black uppercase tracking-[0.25em] text-muted hover:text-eu-accent transition-all relative group"
                 >
                   {link.name}
                   <span className="absolute -bottom-1 left-0 w-0 h-[1px] bg-eu-accent transition-all group-hover:w-full shadow-neon" />
@@ -127,7 +321,7 @@ function App() {
           <div className="flex items-center gap-4">
             <button
               onClick={toggleTheme}
-              className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl transition-all border border-white/5 text-primary"
+              className="p-3 bg-[var(--eu-bg-void)]/60 hover:bg-[var(--eu-bg-void)]/80 rounded-2xl transition-all border border-[var(--eu-glass-border)] text-primary"
               title="Toggle Cinematic Mode"
             >
               <Zap size={16} fill={theme === 'dark' ? "currentColor" : "none"} className={theme === 'dark' ? "animate-pulse" : ""} />
@@ -147,7 +341,7 @@ function App() {
         </motion.header>
       </AnimatePresence>
 
-      <main className="relative z-10 pt-4 md:pt-8">
+      <main className="relative z-10 pt-4 md:pt-8 h-full">
         <AnimatePresence mode="wait">
           {!isLoggedIn ? (
             <motion.div
@@ -168,7 +362,6 @@ function App() {
                     viewport={{ once: true }}
                     transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
                   >
-
                     <h1 className="font-outfit font-black text-5xl sm:text-7xl md:text-9xl leading-[0.8] tracking-tight-mega mb-12 premium-gradient-text uppercase">
                       SENTINEL<br />AI QA
                     </h1>
@@ -176,15 +369,15 @@ function App() {
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-8 mb-16 opacity-60">
                       <div className="flex items-center gap-3">
                         <Shield className="text-primary" size={12} />
-                        <span className="text-[9px] font-black tracking-widest uppercase text-slate-300">Hardened Topology</span>
+                        <span className="text-[9px] font-black tracking-widest uppercase">Hardened Topology</span>
                       </div>
                       <div className="flex items-center gap-3">
                         <Cpu className="text-primary" size={12} />
-                        <span className="text-[9px] font-black tracking-widest uppercase text-slate-300">Neural Auditing</span>
+                        <span className="text-[9px] font-black tracking-widest uppercase">Neural Auditing</span>
                       </div>
                       <div className="flex items-center gap-3">
                         <Activity className="text-primary" size={12} />
-                        <span className="text-[9px] font-black tracking-widest uppercase text-slate-300">Live Diagnostics</span>
+                        <span className="text-[9px] font-black tracking-widest uppercase">Live Diagnostics</span>
                       </div>
                     </div>
                   </motion.div>
@@ -201,15 +394,18 @@ function App() {
                 </div>
               </section>
 
-              <section id="capabilities" className="py-12">
+              <section id="capabilities" className="py-6 sm:py-8">
                 <Capabilities />
               </section>
 
-              <section id="how-it-works" className="flex items-center justify-center py-12 bg-slate-900/10">
+              <section id="how-it-works" className="flex items-center justify-center py-6 sm:py-8">
                 <HowItWorks />
               </section>
 
-              <div id="about-us" className="relative flex items-center justify-center py-12 px-10">
+
+
+
+              <div id="about-us" className="relative flex items-center justify-center py-6 sm:py-8 px-4 sm:px-10">
                 <AboutUs />
               </div>
             </motion.div>
@@ -221,34 +417,70 @@ function App() {
               exit={{ opacity: 0 }}
               className="fixed inset-0 pt-16 md:pt-20 flex overflow-hidden bg-transparent"
             >
-              {/* Persistent Sidebar / Mobile Drawer */}
-              <div 
-                className={`fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm transition-opacity duration-500 lg:hidden ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
+              <div
+                className={`fixed inset-0 z-[60] bg-black/80 transition-opacity duration-500 lg:hidden ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                 onClick={() => setIsSidebarOpen(false)}
               />
-              
+
               <div className={`fixed inset-y-0 left-0 z-[70] transition-transform duration-500 transform lg:relative lg:translate-x-0 lg:p-4 lg:md:p-6 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
                 <ChatSidebar
                   onSelectSession={(id) => {
                     setActiveReportId(id);
-                    setViewingReportId(id);
+                    setViewingReportId(null); // Explicitly ensure we are in chat mode
                     setShowReportList(false);
+                    setShowGlobalStats(false);
+                    setIsSidebarOpen(false);
+                  }}
+                  onViewReport={(id) => {
+                    setViewingReportId(id);
+                    setActiveReportId(id); // Also sync active report
+                    setShowReportList(false);
+                    setShowGlobalStats(false);
                     setIsSidebarOpen(false);
                   }}
                   activeReportId={activeReportId}
                   onNewSession={() => {
+                    localStorage.removeItem('sentinel_chat_messages');
+                    setChatKey(prev => prev + 1);
                     setActiveReportId(null);
                     setViewingReportId(null);
+                    setShowReportList(false);
+                    setShowGlobalStats(false);
                     setIsSidebarOpen(false);
                   }}
                   refreshKey={refreshKey}
                   onToggleTheme={toggleTheme}
                   theme={theme}
-                  onGroupChart={() => { setShowReportList(true); setIsSidebarOpen(false); }}
+                  onGroupChart={() => {
+                    setShowReportList(true);
+                    setShowGlobalStats(true);
+                    setViewingReportId(null);
+                    setIsSidebarOpen(false);
+                  }}
+                  onDeleteReport={(id) => {
+                    if (activeReportId === id) {
+                      setActiveReportId(null);
+                      setViewingReportId(null);
+                      setChatKey(prev => prev + 1); // FORCE RESET CHAT INTERFACE
+                      localStorage.removeItem('sentinel_chat_messages');
+                    }
+                    // If the deleted report is currently scanning, clear progress
+                    if (scanProgress && (
+                      !scanProgress.reportId || // FALLBACK: Clear orphaned/legacy bars
+                      scanProgress.reportId === id || 
+                      scanProgress.id === id
+                    )) {
+                       setScanProgress(null);
+                       localStorage.removeItem('sentinel_pending_progress');
+                    }
+                    setRefreshKey(prev => prev + 1);
+                  }}
+                  confirm={confirm}
+                  prompt={prompt}
+                  setAlert={setAlert}
                 />
               </div>
 
-              {/* Main Workspace (Modular) */}
               <div className="flex-1 h-full relative p-4 md:p-6 overflow-hidden">
                 <AnimatePresence mode="wait">
                   {viewingReportId ? (
@@ -262,6 +494,20 @@ function App() {
                       <ReportDetail
                         reportId={viewingReportId}
                         onBack={() => setViewingReportId(null)}
+                        onRefresh={() => setRefreshKey(prev => prev + 1)}
+                        onReScan={handleReScan}
+                        onDeleted={() => {
+                          if (activeReportId === viewingReportId) setActiveReportId(null);
+                          setRefreshKey(prev => prev + 1);
+                          setViewingReportId(null);
+                        }}
+                        onAskAI={(msg) => {
+                          setPendingChatMessage(msg);
+                          setViewingReportId(null);
+                        }}
+                        confirm={confirm}
+                        prompt={prompt}
+                        setAlert={setAlert}
                       />
                     </motion.div>
                   ) : showReportList ? (
@@ -272,19 +518,39 @@ function App() {
                       exit={{ opacity: 0, scale: 0.98 }}
                       className="h-full overflow-y-auto custom-scrollbar"
                     >
-                      <div className="mb-8">
-                        <button 
-                          onClick={() => setShowReportList(false)}
-                          className="px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-[10px] font-black uppercase tracking-widest text-eu-accent transition-all"
+                      <div className="mb-8 flex items-center justify-between">
+                        <button
+                          onClick={() => { setShowReportList(false); setShowGlobalStats(false); }}
+                          className="px-6 py-2 bg-[var(--eu-bg-void)]/60 hover:bg-[var(--eu-bg-void)]/80 border border-[var(--eu-glass-border)] rounded-xl text-[10px] font-black uppercase tracking-widest text-eu-accent transition-all"
                         >
                           ← Return to Neural Chat
                         </button>
+                        {showGlobalStats && (
+                          <p className="text-[10px] font-black uppercase tracking-industrial text-slate-500 opacity-40">Tactical_Aggregate_Module</p>
+                        )}
                       </div>
-                      <ReportDashboard 
-                        onSelectReport={(id) => { setActiveReportId(id); setShowReportList(false); }}
-                        refreshKey={refreshKey}
-                        theme={theme}
-                      />
+
+                      {showGlobalStats ? (
+                        <GlobalIntelligence reports={reports} />
+                      ) : (
+                        <ReportDashboard
+                          onSelectReport={(id) => {
+                            setActiveReportId(id);
+                            setViewingReportId(id);
+                            setShowReportList(false);
+                            setShowGlobalStats(false);
+                          }}
+                          refreshKey={refreshKey}
+                          theme={theme}
+                          onDeleteReport={(id) => {
+                            if (activeReportId === id) setActiveReportId(null);
+                            setRefreshKey(prev => prev + 1);
+                          }}
+                          confirm={confirm}
+                          prompt={prompt}
+                          setAlert={setAlert}
+                        />
+                      )}
                     </motion.div>
                   ) : (
                     <motion.div
@@ -295,12 +561,17 @@ function App() {
                       className="h-full"
                     >
                       <ChatInterface
+                        key={chatKey}
                         activeReportId={activeReportId}
                         onScanStarted={(id) => {
                           handleScanStarted(id);
                         }}
                         onViewFullReport={setViewingReportId}
                         onRefresh={() => setRefreshKey(prev => prev + 1)}
+                        onResetTarget={() => setActiveReportId(null)}
+                        globalScanProgress={scanProgress}
+                        pendingMessage={pendingChatMessage}
+                        onMessageConsumed={() => setPendingChatMessage(null)}
                       />
                     </motion.div>
                   )}
@@ -311,7 +582,139 @@ function App() {
         </AnimatePresence>
       </main>
 
+      {/* Global Progress Bar (Sticky) */}
+      <AnimatePresence>
+        {isLoggedIn && scanProgress && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-2xl z-[100] p-[1px] bg-gradient-to-r from-eu-accent/50 via-white/10 to-transparent rounded-[20px] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)]"
+          >
+            <div className="bg-[var(--eu-bg-card)] p-5 rounded-[19px] border border-[var(--eu-glass-border)]">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-4">
+                  <div className="size-11 bg-eu-accent/10 rounded-xl flex items-center justify-center border border-eu-accent/20 relative group">
+                    <div className="absolute inset-0 bg-eu-accent/20 blur-lg rounded-full animate-pulse group-hover:bg-eu-accent/40 transition-all" />
+                    <Activity size={18} className="text-eu-accent animate-[pulse_2s_infinite] relative" />
+                  </div>
+                  <div>
+                    <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-white/90 font-outfit">Neural Substrate Scan</h4>
+                    <p className="text-[10px] font-bold text-eu-accent/80 uppercase tracking-tighter mt-1 flex items-center gap-2">
+                      <span className="inline-block size-1 bg-eu-accent rounded-full animate-ping" />
+                      {scanProgress.stage}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-6">
+                  <div className="text-right">
+                    <div className="text-lg font-black font-mono text-white tracking-tighter leading-none">{scanProgress.percent}%</div>
+                    <div className="text-[8px] font-black text-slate-500 uppercase tracking-widest mt-1">Completion</div>
+                  </div>
+                  
+                  <button 
+                    onClick={() => {
+                      setScanProgress(null);
+                      localStorage.removeItem('sentinel_pending_progress');
+                    }}
+                    className="size-8 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl flex items-center justify-center text-white/40 hover:text-white transition-all shadow-sm"
+                    title="Dismiss Progress Monitor"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="relative w-full h-2 bg-[var(--eu-bg-void)] rounded-full overflow-hidden p-[1px] border border-[var(--eu-glass-border)]">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-eu-accent via-violet-500 to-cyan-400 relative overflow-hidden"
+                  initial={{ width: '0%' }}
+                  animate={{ width: `${scanProgress.percent}%` }}
+                  transition={{ duration: 0.8, ease: "circOut" }}
+                >
+                  <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.4)_50%,transparent_100%)] w-20 h-full animate-[shimmer_2s_infinite]" />
+                </motion.div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {!isLoggedIn && <Footer />}
+
+      {/* Global Confirm/Prompt Modal - Refined to 'Popup' style */}
+      <AnimatePresence>
+        {confirmModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[10000] flex items-center justify-center p-4 glass-overlay"
+          >
+            <motion.div
+              initial={{ scale: 0.8, y: -20, opacity: 0, rotateX: 10 }}
+              animate={{ scale: 1, y: 0, opacity: 1, rotateX: 0 }}
+              exit={{ scale: 0.8, y: -20, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="w-full max-w-[380px] glass-modal p-6 rounded-[28px] relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 p-6 opacity-[0.03]">
+                <Command size={80} className="text-eu-accent" />
+              </div>
+
+              <div className="flex items-center gap-4 mb-5">
+                <div className={`size-11 rounded-xl flex items-center justify-center border shadow-neon ${confirmModal.type === 'danger' ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' : 'bg-eu-accent/10 border-eu-accent/20 text-eu-accent'
+                  }`}>
+                  {confirmModal.type === 'danger' ? <Skull size={20} /> : <Zap size={20} />}
+                </div>
+                <div>
+                  <h3 className="text-lg font-black uppercase tracking-tight text-[var(--eu-text-main)] font-outfit leading-none">{confirmModal.title || 'Uplink Request'}</h3>
+                  <p className="text-[8px] font-black text-[var(--eu-text-main)] opacity-40 uppercase tracking-widest font-outfit mt-1">Status: Restricted Access</p>
+                </div>
+              </div>
+
+              <p className="text-slate-400 text-[13px] leading-relaxed font-medium mb-6">
+                {confirmModal.message}
+              </p>
+
+              {confirmModal.showInput && (
+                <div className="mb-8">
+                  <input
+                    id="modal-pixel-input"
+                    type="text"
+                    autoFocus
+                    placeholder="Enter uplink parameters..."
+                    className="w-full bg-[var(--eu-bg-void)] border border-[var(--eu-glass-border)] rounded-xl px-4 py-3 text-[var(--eu-text-main)] text-sm outline-none focus:border-eu-accent/50 transition-all font-mono"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') confirmModal.onConfirm(e.currentTarget.value);
+                    }}
+                  />
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-2">
+                <button
+                  onClick={confirmModal.onCancel}
+                  className="flex-1 py-3 bg-[var(--eu-bg-void)]/40 hover:bg-[var(--eu-bg-void)]/60 border border-[var(--eu-glass-border)] rounded-xl text-[9px] font-black uppercase tracking-widest text-[var(--eu-text-main)] opacity-40 transition-all font-outfit"
+                >
+                  Abort
+                </button>
+                <button
+                  onClick={() => {
+                    const input = document.getElementById('modal-pixel-input');
+                    confirmModal.onConfirm(input ? input.value : true);
+                  }}
+                  className={`flex-1 py-3 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-neon font-outfit ${confirmModal.type === 'danger' ? 'bg-primary hover:bg-primary/80' : 'bg-eu-accent hover:bg-eu-accent/80'
+                    }`}
+                >
+                  {confirmModal.confirmText || 'Authorize'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {liveReportId && createPortal(
         <AnimatePresence>
@@ -319,13 +722,13 @@ function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[999] flex items-center justify-center p-4 md:p-12 bg-slate-950/80 backdrop-blur-md"
+            className="fixed inset-0 z-[999] flex items-center justify-center p-4 md:p-12 bg-[var(--eu-bg-overlay-modal)] backdrop-blur-md"
           >
             <div className="w-full max-w-4xl h-[80vh] relative">
               <LiveFuzzingConsole reportId={liveReportId} />
               <button
                 onClick={() => setLiveReportId(null)}
-                className="absolute -top-12 right-0 px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] font-black uppercase tracking-widest text-white transition-all"
+                className="absolute -top-12 right-0 px-6 py-2 bg-[var(--eu-bg-void)]/60 hover:bg-[var(--eu-bg-void)]/80 border border-[var(--eu-glass-border)] rounded-full text-[10px] font-black uppercase tracking-widest text-[var(--eu-text-main)] opacity-80 transition-all"
               >
                 Close Live Console
               </button>

@@ -64,7 +64,7 @@ const Architecture = () => {
              <Connector delay={0.3} />
              <Node icon={Cpu} title="Gemini 2.5 Node" desc="Neural reasoning cluster for vulnerability synthesis." delay={0.5} />
              <Connector delay={0.7} />
-             <Node icon={Database} title="Lattice Storage" desc="Encrypted persistence for diagnostic archives." delay={0.9} color="emerald-500" />
+             <Node icon={Database} title="Lattice Storage" desc="Encrypted persistence for diagnostic archives." delay={0.9} color="primary" />
           </div>
           
           <div className="flex flex-col items-center">
@@ -72,7 +72,7 @@ const Architecture = () => {
              <div className="flex items-center gap-8 mt-4">
                 <Node icon={Layout} title="The Neural Hub" desc="Symmetrical Multi-Panel Operational Interface." delay={1.3} />
                 <Connector delay={1.5} />
-                <Node icon={Share2} title="Classroom Relay" desc="Real-time session sharing protocol for SOC teams." delay={1.7} color="blue-500" />
+                <Node icon={Share2} title="Classroom Relay" desc="Real-time session sharing protocol for SOC teams." delay={1.7} color="primary" />
              </div>
           </div>
         </div>
@@ -93,11 +93,11 @@ const Architecture = () => {
                  <p className="text-slate-400 text-[11px] leading-relaxed uppercase tracking-widest font-black opacity-60">High-Fidelity DOM Crawling using headless browser orchestration on isolated nodes.</p>
               </div>
               <div className="space-y-3">
-                 <p className="text-[10px] font-black uppercase text-emerald-500 tracking-widest">Protocol 02</p>
+                 <p className="text-[10px] font-black uppercase text-primary tracking-widest">Protocol 02</p>
                  <p className="text-slate-400 text-[11px] leading-relaxed uppercase tracking-widest font-black opacity-60">JWT (JSON Web Token) tactical persistence layered over MongoDB Atlas storage.</p>
               </div>
               <div className="space-y-3">
-                 <p className="text-[10px] font-black uppercase text-blue-500 tracking-widest">Protocol 03</p>
+                 <p className="text-[10px] font-black uppercase text-primary tracking-widest">Protocol 03</p>
                  <p className="text-slate-400 text-[11px] leading-relaxed uppercase tracking-widest font-black opacity-60">Real-time tactical synchronization via Socket.io neural uplink protocols.</p>
               </div>
            </div>

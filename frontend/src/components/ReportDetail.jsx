@@ -4,15 +4,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft, ExternalLink, AlertTriangle, Terminal, Layout,
   FormInput, Image, Zap, Smartphone, UserCheck, Loader2,
-  CheckCircle2, Info, AlertCircle, BarChart3, Database, Shield, Cpu,
-  Wifi, Trash2, Skull, Code, Copy, Check, Plus, Github as GitHubIcon
+  CheckCircle2, Info, AlertCircle, BarChart3, Database, Shield, Cpu, Bot,
+  Wifi, Trash2, Skull, Code, Copy, Check, Plus, Github as GitHubIcon,
+  Activity, Globe
 } from 'lucide-react';
 import axios from 'axios';
+import NeuralMap from './NeuralMap';
 
 const StatCard = ({ label, value, color, icon }) => (
-  <div className="glass-euphoria p-4 rounded-2xl border-white/5 relative overflow-hidden group">
+  <div className="glass-euphoria p-4 rounded-2xl border-[var(--eu-glass-border)] relative overflow-hidden group">
     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-20 transition-all duration-700 group-hover:scale-110">{icon}</div>
-    <p className="text-[9px] text-slate-500 font-black uppercase tracking-[0.2em] mb-2">{label}</p>
+    <p className="text-[9px] text-[var(--eu-text-main)] opacity-40 font-black uppercase tracking-[0.2em] mb-2">{label}</p>
     <p className={`text-2xl font-black ${color} tracking-tight font-outfit`}>{value}</p>
   </div>
 );
@@ -20,26 +22,24 @@ const StatCard = ({ label, value, color, icon }) => (
 const SectionHeader = ({ title, icon }) => (
   <div className="flex items-center gap-4 mb-6">
     <div className="size-10 bg-eu-accent/20 rounded-xl flex items-center justify-center border border-eu-accent/20 shadow-neon text-eu-accent">{icon}</div>
-    <h3 className="text-xl font-black uppercase tracking-tight font-outfit text-white">{title} <span className="text-eu-accent italic">Analysis</span></h3>
+    <h3 className="text-xl font-black uppercase tracking-tight font-outfit text-[var(--eu-text-main)]">{title} <span className="text-eu-accent italic">Analysis</span></h3>
   </div>
 );
 
 const RecommendationCard = ({ title, status, icon, description, statusColor }) => (
-  <div className="glass-euphoria p-5 rounded-2xl border-white/5 group hover:border-eu-accent/30 transition-all duration-700 hover:translate-y-[-4px]">
+  <div className="glass-euphoria p-5 rounded-2xl border-[var(--eu-glass-border)] group hover:border-eu-accent/30 transition-all duration-700 hover:translate-y-[-4px]">
     <div className="flex items-start justify-between mb-6">
-      <div className="size-12 bg-white/5 rounded-xl flex items-center justify-center text-slate-500 group-hover:bg-eu-accent/20 group-hover:text-eu-accent transition-all duration-700 shadow-inner group-hover:shadow-neon">{icon}</div>
+      <div className="size-12 bg-[var(--eu-bg-void)]/80 rounded-xl flex items-center justify-center text-[var(--eu-text-main)] opacity-40 group-hover:bg-eu-accent/20 group-hover:text-eu-accent transition-all duration-700 shadow-inner group-hover:shadow-neon text-right">{icon}</div>
       <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${statusColor} shadow-neon`}>{status}</span>
     </div>
-    <h4 className="text-lg font-black text-white mb-2 uppercase tracking-tight font-outfit">{title}</h4>
-    <p className="text-slate-400 text-xs leading-relaxed font-medium opacity-80">{description}</p>
+    <h4 className="text-lg font-black text-[var(--eu-text-main)] mb-2 uppercase tracking-tight font-outfit">{title}</h4>
+    <p className="text-[var(--eu-text-main)] opacity-40 text-xs leading-relaxed font-medium">{description}</p>
   </div>
 );
 
 const LighthouseCircle = ({ label, score }) => {
   const getScoreColor = (s) => {
-    if (s >= 90) return 'text-eu-accent stroke-eu-accent';
-    if (s >= 50) return 'text-amber-500 stroke-amber-500';
-    return 'text-rose-500 stroke-rose-500';
+    return 'text-primary stroke-primary';
   };
   const radius = 32;
   const circumference = 2 * Math.PI * radius;
@@ -49,7 +49,7 @@ const LighthouseCircle = ({ label, score }) => {
       <div className="relative w-20 h-20">
         <svg className="w-full h-full transform -rotate-90 filter drop-shadow-[0_0_10px_rgba(var(--eu-accent-rgb),0.3)]">
           <circle cx="50%" cy="50%" r={radius} fill="transparent" stroke="currentColor" strokeWidth="4" className="text-white/5" />
-          <circle 
+          <circle
             cx="50%" cy="50%" r={radius} fill="transparent" stroke="currentColor" strokeWidth="6"
             strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round"
             className={`${getScoreColor(score)} transition-all duration-1000 ease-out`}
@@ -60,7 +60,7 @@ const LighthouseCircle = ({ label, score }) => {
         </div>
       </div>
       <div className="text-center">
-        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 group-hover:text-white transition-colors">{label}</span>
+        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--eu-text-main)] opacity-40 group-hover:opacity-100 transition-opacity">{label}</span>
       </div>
     </div>
   );
@@ -73,8 +73,7 @@ const getTabData = (report, tab) => {
     case 'console': return report.consoleErrors;
     case 'layout': return [...(report.uiIssues || []), ...(report.responsiveIssues || [])];
     case 'accessibility': return report.accessibilityIssues;
-    case 'chaos': return report.chaosSubmissions;
-    case 'smartformtests': return report.smartFormTests;
+    case 'forms': return report.formIssues;
     default: return [];
   }
 };
@@ -86,19 +85,19 @@ const getTableColumns = (tab) => {
     case 'console': return ['Page', 'Message', 'Type'];
     case 'layout': return ['Page', 'Device', 'Issue', 'Selector'];
     case 'accessibility': return ['Page', 'Issue', 'Severity', 'Element'];
-    case 'chaos': return ['Page', 'FormSelector', 'Payload', 'Outcome', 'RiskLevel'];
+    case 'forms': return ['Form', 'Type', 'Field', 'Severity', 'Message'];
     default: return [];
   }
 };
 
-const IssueTable = ({ data, columns, setRemediationCode }) => {
+const IssueTable = ({ data, columns, setRemediationCode, onAskAI }) => {
   const [expandedRowId, setExpandedRowId] = useState(null);
 
   if (!data || data.length === 0) return (
     <div className="text-center py-20">
-      <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-green-500/20"><CheckCircle2 className="text-green-500" size={32} /></div>
-      <h3 className="text-xl font-bold text-white mb-2">No Anomalies Detected</h3>
-      <p className="text-text-muted text-sm max-w-xs mx-auto">This protocol has returned zero active failures for the selected target parameters.</p>
+      <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-primary/20"><CheckCircle2 className="text-primary" size={32} /></div>
+      <h3 className="text-xl font-bold text-[var(--eu-text-main)] mb-2">No Anomalies Detected</h3>
+      <p className="text-[var(--eu-text-muted)] text-sm max-w-xs mx-auto">This protocol has returned zero active failures for the selected target parameters.</p>
     </div>
   );
 
@@ -119,6 +118,11 @@ const IssueTable = ({ data, columns, setRemediationCode }) => {
       impact: "Exclusion of users with assistive technological requirements.",
       guide: "Ensure ARIA landmarks and semantic contrasts meet WCAG 2.1 premium standards."
     };
+    if (row.field || row.form) return { // Forms
+      cause: "Semantic or validation gap identified in the user interaction layer.",
+      impact: "Potential user frustration or failure to complete critical business flows.",
+      guide: `Review the ${row.field} field in ${row.form}. Ensure labels and validation constraints are correctly implemented.`
+    };
     return {
       cause: "General deviation from optimized architectural standards.",
       impact: "Sub-optimal user experience and neural processing inefficiency.",
@@ -131,8 +135,8 @@ const IssueTable = ({ data, columns, setRemediationCode }) => {
       <table className="w-full text-left border-separate border-spacing-y-2">
         <thead>
           <tr>
-            {columns.map(col => <th key={col} className="pb-3 px-4 text-[8px] font-black text-slate-500 uppercase tracking-widest">{col}</th>)}
-            {!columns.includes('Outcome') && <th className="pb-3 px-4 text-[8px] font-black text-slate-500 uppercase tracking-widest text-right">Action</th>}
+            {columns.map(col => <th key={col} className="pb-3 px-4 text-[8px] font-black text-[var(--eu-text-main)] opacity-40 uppercase tracking-widest">{col}</th>)}
+            {!columns.includes('Outcome') && <th className="pb-3 px-4 text-[8px] font-black text-[var(--eu-text-main)] opacity-40 uppercase tracking-widest text-right">Action</th>}
           </tr>
         </thead>
         <tbody>
@@ -143,7 +147,7 @@ const IssueTable = ({ data, columns, setRemediationCode }) => {
 
             return (
               <React.Fragment key={i}>
-                <tr 
+                <tr
                   onClick={() => setExpandedRowId(isExpanded ? null : rowId)}
                   className={`group cursor-pointer transition-all duration-500 ${isExpanded ? 'bg-eu-accent/5 translate-x-1' : 'hover:translate-x-2'}`}
                 >
@@ -155,8 +159,8 @@ const IssueTable = ({ data, columns, setRemediationCode }) => {
                     if (col === 'Status') {
                       const isCrit = parseInt(value) >= 400 || value === 'Error';
                       return (
-                        <td key={col} className="py-3 px-4 glass-euphoria first:rounded-l-xl last:rounded-r-xl border-y border-white/5 first:border-l last:border-r">
-                          <span className={`px-2 py-1 rounded-lg text-[9px] font-black shadow-neon ${isCrit ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-eu-accent/10 text-eu-accent border border-eu-accent/20'}`}>{value || '---'}</span>
+                        <td key={col} className="py-3 px-4 glass-euphoria first:rounded-l-xl last:rounded-r-xl border-y border-[var(--eu-glass-border)] first:border-l last:border-r">
+                          <span className={`px-2 py-1 rounded-lg text-[9px] font-black shadow-neon ${isCrit ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-primary/10 text-primary border border-primary/20'}`}>{value || '---'}</span>
                         </td>
                       );
                     }
@@ -164,8 +168,8 @@ const IssueTable = ({ data, columns, setRemediationCode }) => {
                     if (col === 'RiskLevel' || col === 'Outcome') {
                       const isSecure = value === 'Secure' || value === 'System Resilience';
                       return (
-                        <td key={col} className="py-3 px-4 glass-euphoria first:rounded-l-xl last:rounded-r-xl border-y border-white/5 first:border-l last:border-r">
-                          <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase shadow-neon ${isSecure ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>{value}</span>
+                        <td key={col} className="py-3 px-4 glass-euphoria first:rounded-l-xl last:rounded-r-xl border-y border-[var(--eu-glass-border)] first:border-l last:border-r">
+                          <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase shadow-neon bg-primary/10 text-primary border border-primary/20`}>{value}</span>
                         </td>
                       );
                     }
@@ -173,23 +177,33 @@ const IssueTable = ({ data, columns, setRemediationCode }) => {
                     if (col === 'Payload' || col === 'FormSelector' || col === 'Element' || col === 'Selector' || col === 'Message') {
                       return (
                         <td key={col} className="py-3 px-4 glass-euphoria first:rounded-l-xl last:rounded-r-xl border-y border-white/5 first:border-l last:border-r max-w-sm">
-                          <code className="text-[10px] bg-white/5 px-2 py-1 rounded-lg text-eu-accent/80 border border-white/5 block break-all font-mono shadow-inner">{value || 'NULL'}</code>
+                          <code className="text-[10px] bg-[var(--eu-bg-void)]/60 px-2 py-1 rounded-lg text-eu-accent/80 border border-[var(--eu-glass-border)] block break-all font-mono shadow-inner">{value || 'NULL'}</code>
                         </td>
                       );
                     }
 
                     return (
                       <td key={col} className="py-3 px-4 glass-euphoria first:rounded-l-xl last:rounded-r-xl border-y border-white/5 first:border-l last:border-r">
-                        <span className="text-[11px] font-bold text-slate-300 block max-w-xs break-all leading-relaxed font-outfit">{value || '---'}</span>
+                        <span className="text-[11px] font-bold text-[var(--eu-text-main)] opacity-80 block max-w-xs break-all leading-relaxed font-outfit">{value || '---'}</span>
                       </td>
                     );
                   })}
                   {!columns.includes('Outcome') && (
                     <td className="py-3 px-4 glass-euphoria first:rounded-l-xl last:rounded-r-xl border-y border-white/5 first:border-l last:border-r text-right">
                       <div className="flex items-center justify-end gap-3">
+                        <button
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            const issueTitle = row.issue || row.message || row.link || "this issue";
+                            onAskAI(`Analyze this finding from the report: ${issueTitle}`); 
+                          }}
+                          className="px-3 py-1.5 bg-primary/10 hover:bg-primary text-white rounded-lg text-[9px] font-black uppercase tracking-widest border border-primary/30 transition-all flex items-center gap-2 shadow-neon group"
+                        >
+                          <Cpu size={12} className="group-hover:rotate-12 transition-transform" /> Ask AI
+                        </button>
                         {row.suggestedFix && (
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setRemediationCode(row.suggestedFix); }} 
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setRemediationCode(row.suggestedFix); }}
                             className="px-3 py-1.5 bg-eu-accent/10 hover:bg-eu-accent text-white rounded-lg text-[9px] font-black uppercase tracking-widest border border-eu-accent/30 transition-all flex items-center gap-2 shadow-neon"
                           >
                             <Code size={12} /> Patch
@@ -212,40 +226,40 @@ const IssueTable = ({ data, columns, setRemediationCode }) => {
                           <div className="absolute top-0 right-0 p-8 opacity-5">
                             <Zap size={64} className="text-eu-accent" />
                           </div>
-                          
+
                           <div className="flex-1 space-y-6">
                             <div className="flex items-center gap-3">
                               <div className="size-8 bg-eu-accent/20 rounded-lg flex items-center justify-center text-eu-accent border border-eu-accent/20">
                                 <Shield size={14} />
                               </div>
-                              <h4 className="text-sm font-black uppercase tracking-widest text-white">Neural Debug Guide</h4>
+                              <h4 className="text-sm font-black uppercase tracking-widest text-[var(--eu-text-main)]">Neural Debug Guide</h4>
                             </div>
-                            
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                               <div className="space-y-2">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Root Cause</p>
-                                <p className="text-xs text-slate-300 font-medium leading-relaxed italic">"{remediation.cause}"</p>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-[var(--eu-text-main)] opacity-40">Root Cause</p>
+                                <p className="text-xs text-[var(--eu-text-main)] opacity-80 font-medium leading-relaxed italic">"{remediation.cause}"</p>
                               </div>
                               <div className="space-y-2">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-rose-400">Security / UX Impact</p>
-                                <p className="text-xs text-slate-300 font-medium leading-relaxed italic">"{remediation.impact}"</p>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-primary">Security / UX Impact</p>
+                                <p className="text-xs text-[var(--eu-text-main)] opacity-80 font-medium leading-relaxed italic">"{remediation.impact}"</p>
                               </div>
                             </div>
 
                             <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
                               <p className="text-[9px] font-black uppercase tracking-widest text-eu-accent mb-2">Remediation Intelligence</p>
-                              <p className="text-xs text-slate-400 font-medium leading-relaxed">{remediation.guide}</p>
+                              <p className="text-xs text-[var(--eu-text-main)] opacity-60 font-medium leading-relaxed">{remediation.guide}</p>
                             </div>
                           </div>
 
                           <div className="w-full md:w-64 space-y-4">
-                            <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
+                            <div className="p-4 bg-[var(--eu-bg-void)]/40 rounded-2xl border border-white/5">
                               <p className="text-[8px] font-black uppercase tracking-widest text-slate-600 mb-3 text-center">Protocol Actions</p>
                               <div className="space-y-2">
-                                <button className="w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-300 transition-all">Export Log</button>
-                                <button className="w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-300 transition-all">Neural Trace</button>
+                                <button className="w-full py-2.5 bg-[var(--eu-bg-void)]/60 hover:bg-[var(--eu-bg-void)]/80 border border-[var(--eu-glass-border)] rounded-xl text-[9px] font-black uppercase tracking-widest text-[var(--eu-text-main)] opacity-80 transition-all">Export Log</button>
+                                <button className="w-full py-2.5 bg-[var(--eu-bg-void)]/60 hover:bg-[var(--eu-bg-void)]/80 border border-[var(--eu-glass-border)] rounded-xl text-[9px] font-black uppercase tracking-widest text-[var(--eu-text-main)] opacity-80 transition-all">Neural Trace</button>
                                 {row.suggestedFix && (
-                                  <button 
+                                  <button
                                     onClick={() => setRemediationCode(row.suggestedFix)}
                                     className="w-full py-2.5 bg-eu-accent/20 hover:bg-eu-accent text-white border border-eu-accent/30 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-neon"
                                   >
@@ -269,13 +283,32 @@ const IssueTable = ({ data, columns, setRemediationCode }) => {
   );
 };
 
-const ReportDetail = ({ reportId, onBack }) => {
+const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confirm, prompt, setAlert, onAskAI }) => {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('summary');
   const [remediationCode, setRemediationCode] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
   const [copied, setCopied] = useState(false);
+
+  const tabs = [
+    { id: 'summary', label: 'Summary', icon: <Zap size={14} /> },
+    { id: 'network', label: 'Network', icon: <Wifi size={14} />, count: report?.networkLogs?.length || 0 },
+    { id: 'links', label: 'Links', icon: <ExternalLink size={14} />, count: report?.brokenLinks?.length || 0 },
+    { id: 'console', label: 'Console', icon: <Terminal size={14} />, count: report?.consoleErrors?.length || 0 },
+    { id: 'layout', label: 'UI/UX', icon: <Layout size={14} />, count: (report?.uiIssues?.length || 0) + (report?.responsiveIssues?.length || 0) },
+    { id: 'accessibility', label: 'Accessibility', icon: <UserCheck size={14} />, count: report?.accessibilityIssues?.length || 0 },
+    { id: 'screenshots', label: 'Screens', icon: <Image size={14} />, count: report?.screenshots?.length || 0 },
+    { id: 'forms', label: 'Forms', icon: <FormInput size={14} />, count: report?.formIssues?.length || 0 },
+  ];
+
+  // Auto-reset activeTab if current one is not in the tabs list (safety)
+  useEffect(() => {
+    const validIds = tabs.map(t => t.id);
+    if (!validIds.includes(activeTab)) {
+       setActiveTab('summary');
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     let intervalId = null;
@@ -286,9 +319,11 @@ const ReportDetail = ({ reportId, onBack }) => {
         const data = response.data;
         setReport(data);
 
-        // If scan is done, stop polling
+        // If scan is done, stop polling and trigger parent refresh
         if (data.status === 'completed' || data.status === 'failed') {
           if (intervalId) clearInterval(intervalId);
+          // NEW: Only trigger refresh once per completion state change
+          if (onRefresh && report?.status === 'in-progress') onRefresh();
         }
       } catch (error) {
         console.error('Failed to fetch report', error);
@@ -319,25 +354,13 @@ const ReportDetail = ({ reportId, onBack }) => {
   if (!report) return (
     <div className="glass p-20 text-center rounded-[32px]">
       <AlertTriangle className="text-red-400 mx-auto mb-6" size={48} />
-      <h3 className="text-2xl font-bold mb-2">Protocol Failure</h3>
-      <p className="text-text-muted">The requested inspection log does not exist or has been purged from the index.</p>
+      <h3 className="text-2xl font-bold mb-2 text-[var(--eu-text-main)]">Protocol Failure</h3>
+      <p className="text-muted opacity-60">The requested inspection log does not exist or has been purged from the index.</p>
       <button onClick={onBack} className="mt-8 text-primary font-bold flex items-center gap-2 mx-auto">
         <ChevronLeft size={18} /> Return to Dashboard
       </button>
     </div>
   );
-
-  const tabs = [
-    { id: 'summary', label: 'Summary', icon: <Zap size={14} /> },
-    { id: 'network', label: 'Net', icon: <Wifi size={14} />, count: report.networkLogs?.length || 0 },
-    { id: 'links', label: 'Links', icon: <ExternalLink size={14} />, count: report.brokenLinks?.length || 0 },
-    { id: 'console', label: 'Console', icon: <Terminal size={14} />, count: report.consoleErrors?.length || 0 },
-    { id: 'layout', label: 'UI/UX', icon: <Layout size={14} />, count: (report.uiIssues?.length || 0) + (report.responsiveIssues?.length || 0) },
-    { id: 'smartformtests', label: 'Forms', icon: <CheckCircle2 size={14} />, count: report.smartFormTests?.length || 0 },
-    { id: 'accessibility', label: 'A11y', icon: <UserCheck size={14} />, count: report.accessibilityIssues?.length || 0 },
-    { id: 'chaos', label: 'Chaos', icon: <Skull size={14} />, count: report.chaosSubmissions?.length || 0 },
-    { id: 'screenshots', label: 'Screens', icon: <Image size={14} />, count: report.screenshots?.length || 0 },
-  ];
 
   const calculateHealth = () => {
     if (!report) return 100;
@@ -347,10 +370,13 @@ const ReportDetail = ({ reportId, onBack }) => {
       console: 2,
       layout: 5,
       accessibility: 15,
+      forms: 10,
     };
     const deductions = tabs.reduce((acc, curr) => {
       const weight = weights[curr.id] || 0;
-      return acc + (curr.count * weight);
+      // FIX: Ensure curr.count is numeric before multiplication to avoid NaN
+      const count = curr.count || 0;
+      return acc + (count * weight);
     }, 0);
     return Math.max(0, Math.round(100 - deductions));
   };
@@ -358,16 +384,16 @@ const ReportDetail = ({ reportId, onBack }) => {
   const healthScore = calculateHealth();
 
   return (
-    <div className="space-y-12 pb-20">
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-10">
+    <div className="space-y-8 pb-16">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8">
         <div className="flex items-center gap-8">
-          <button onClick={onBack} className="size-16 glass-euphoria rounded-3xl hover:border-eu-accent/50 transition-all text-slate-500 hover:text-white group shadow-neon flex items-center justify-center">
+          <button onClick={onBack} className="size-16 glass-euphoria rounded-3xl hover:border-eu-accent/50 transition-all text-muted hover:text-[var(--eu-text-main)] group shadow-neon flex items-center justify-center">
             <ChevronLeft size={28} className="group-hover:-translate-x-1 transition-transform" />
           </button>
           <div>
             <div className="flex flex-wrap items-center gap-4 sm:gap-6">
               <h2 className="text-base sm:text-lg md:text-xl font-black premium-gradient-text tracking-[0.2em] uppercase leading-none break-all font-outfit">{new URL(report.url).hostname}</h2>
-              <span className={`px-5 py-2 rounded-2xl text-[10px] sm:text-[12px] font-black uppercase tracking-[0.3em] border ${report.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-500'} shadow-neon`}>
+              <span className={`px-5 py-2 rounded-2xl text-[10px] sm:text-[12px] font-black uppercase tracking-[0.3em] border bg-primary/10 border-primary/30 text-primary shadow-neon`}>
                 {report.status}
               </span>
             </div>
@@ -383,38 +409,53 @@ const ReportDetail = ({ reportId, onBack }) => {
         </div>
         <div className="flex items-center gap-2 w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 no-scrollbar px-1">
           {/* Action Hub (Single Line) */}
-          <button 
+          <button
             onClick={async () => {
-              if (window.confirm("Purge this diagnostic log?")) {
-                try { await axios.delete(`http://localhost:5000/api/report/${reportId}`); onBack(); } 
-                catch (e) { alert("Purge failed."); }
+              const confirmed = await confirm({
+                title: "Log Purge Protocol",
+                message: "This action will permanently remove this diagnostic log from the neural index. This cannot be undone.",
+                confirmText: "Purge Log",
+                type: "danger"
+              });
+              if (confirmed) {
+                try {
+                  await axios.delete(`http://localhost:5000/api/report/${reportId}`);
+                  if (onDeleted) onDeleted();
+                  else onBack();
+                  setAlert({ type: 'success', message: 'Neural trace purged successfully.' });
+                }
+                catch (e) { setAlert({ type: 'error', message: 'Purge failed. Uplink blocked.' }); }
               }
             }}
-            className="flex-none flex items-center justify-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest text-rose-500 transition-all shadow-neon"
+            className="flex-none flex items-center justify-center gap-2 bg-primary/10 hover:bg-primary/20 border border-primary/20 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest text-primary transition-all shadow-neon"
           >
             Delete <Trash2 size={10} />
           </button>
 
-          <button 
+          <button
             onClick={async () => {
               try {
                 const res = await axios.get(`http://localhost:5000/api/report/${reportId}/export`);
                 if (res.data.url) window.open(`http://localhost:5000${res.data.url}`, '_blank');
-              } catch (e) { alert("Download failed."); }
+              } catch (e) { setAlert({ type: 'error', message: 'PDF export protocol failed.' }); }
             }}
             className="flex-none flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-neon text-white"
           >
             PDF <BarChart3 size={10} />
           </button>
 
-          <button 
+          <button
             onClick={async () => {
-              const url = window.prompt("Enter Discord Webhook URL:");
+              const url = await prompt({
+                title: "Discord Dispatch",
+                message: "Enter the target Discord Webhook URL for this neural pulse.",
+                confirmText: "Dispatch"
+              });
               if (url) {
                 try {
                   await axios.post('http://localhost:5000/api/notify/notify', { reportId, type: 'discord', webhookUrl: url });
-                  alert("Discord Pulse Dispatched.");
-                } catch (e) { alert("Dispatch Failed."); }
+                  setAlert({ type: 'success', message: 'Discord Pulse Dispatched.' });
+                } catch (e) { setAlert({ type: 'error', message: 'Dispatch Failed.' }); }
               }
             }}
             className="flex-none flex items-center justify-center gap-2 bg-[#5865F2]/10 hover:bg-[#5865F2] hover:text-white border border-[#5865F2]/30 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest text-[#5865F2] transition-all shadow-neon"
@@ -422,8 +463,24 @@ const ReportDetail = ({ reportId, onBack }) => {
             Pulse <Terminal size={10} />
           </button>
 
-          <a 
-            href={report.url} target="_blank" rel="noreferrer" 
+          <button
+            onClick={async () => {
+              const confirmed = await confirm({
+                title: "Audit Reset",
+                message: `Initiate fresh neural audit for ${new URL(report.url).hostname}? This will bypass all cached signatures.`,
+                confirmText: "Confirm Reset"
+              });
+              if (confirmed) {
+                if (onReScan) onReScan(report.url);
+              }
+            }}
+            className="flex-none flex items-center justify-center gap-2 bg-eu-accent/10 hover:bg-eu-accent text-white border border-eu-accent/30 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-neon"
+          >
+            Re-test <Zap size={10} />
+          </button>
+
+          <a
+            href={report.url} target="_blank" rel="noreferrer"
             className="flex-none flex items-center justify-center gap-2 bg-eu-accent hover:scale-[1.05] active:scale-[0.98] px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-neon text-white"
           >
             Access <ExternalLink size={10} />
@@ -431,24 +488,30 @@ const ReportDetail = ({ reportId, onBack }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-3">
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-9 gap-4 p-6">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl transition-all duration-700 group relative border shadow-lg ${
-              activeTab === tab.id ? 'bg-eu-accent/20 border-eu-accent/40 ring-1 ring-eu-accent/20' : 'bg-white/2 border-white/5 hover:border-white/10 hover:bg-white/5'
-            }`}
+            className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl transition-all duration-300 group relative border shadow-xl w-full ${activeTab === tab.id
+                ? 'bg-[var(--eu-bg-card)] border-eu-accent shadow-neon-strong z-20 scale-105'
+                : 'bg-[var(--eu-bg-card)] border-[var(--eu-glass-border)] hover:border-eu-accent/40 z-10'
+              }`}
           >
-            <div className={`size-9 rounded-xl flex items-center justify-center transition-all duration-700 ${activeTab === tab.id ? 'bg-eu-accent text-white scale-105 shadow-neon' : 'bg-white/5 text-slate-500 group-hover:text-white group-hover:scale-105'}`}>
+            <div className={`size-9 rounded-xl flex items-center justify-center transition-all duration-700 ${activeTab === tab.id
+                ? 'bg-eu-accent/10 text-eu-accent scale-110'
+                : 'bg-[var(--eu-bg-void)] text-[var(--eu-text-main)] opacity-40 group-hover:opacity-100 group-hover:scale-105'
+              }`}>
               {tab.icon}
             </div>
             <div className="text-center">
-              <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${activeTab === tab.id ? 'text-white' : 'text-slate-500'}`}>
+              <p className={`text-[10px] font-black uppercase tracking-widest mb-1 transition-colors ${activeTab === tab.id ? 'text-eu-accent' : 'text-[var(--eu-text-main)] opacity-50'
+                }`}>
                 {tab.label}
               </p>
               {tab.count !== undefined && (
-                <span className={`text-[11px] font-black font-mono transition-colors ${activeTab === tab.id ? 'text-white/80' : tab.count > 0 ? 'text-eu-accent' : 'text-emerald-500'}`}>
+                <span className={`text-[11px] font-black font-mono transition-colors ${activeTab === tab.id ? 'text-eu-accent/80' : 'text-primary'
+                  }`}>
                   {tab.count < 10 && tab.count > 0 ? `0${tab.count}` : tab.count === 0 ? '00' : tab.count}
                 </span>
               )}
@@ -468,19 +531,30 @@ const ReportDetail = ({ reportId, onBack }) => {
                   <Loader2 size={28} className="text-eu-accent animate-spin shrink-0" />
                   <div>
                     <p className="text-sm font-black text-white uppercase tracking-[0.2em] font-outfit">Active Neural Crawl</p>
-                    <p className="text-xs text-slate-500 mt-1 font-medium">Sentinel AI is navigating the DOM tree and harvesting diagnostic signatures. Data will stream in real-time.</p>
+                    <p className="text-xs text-[var(--eu-text-muted)] mt-1 font-medium">Sentinel AI is navigating the DOM tree and harvesting diagnostic signatures. Data will stream in real-time.</p>
                   </div>
                   <div className="ml-auto px-4 py-1.5 rounded-xl bg-eu-accent/20 border border-eu-accent/20 text-[10px] font-black text-eu-accent uppercase tracking-widest animate-pulse font-outfit">Status: {report.status}</div>
                 </motion.div>
               )}
 
+              {/* ── Neural Web Mapping (NEW) ── */}
+              {report.siteStructure && report.siteStructure.nodes?.length > 0 && (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-4">
+                    <div className="size-10 bg-eu-accent/20 rounded-xl flex items-center justify-center border border-eu-accent/30 shadow-neon text-eu-accent"><Globe size={16} /></div>
+                    <h3 className="text-xl font-black uppercase tracking-tight font-outfit text-white">Neural <span className="text-eu-accent italic">Lattice</span></h3>
+                  </div>
+                  <NeuralMap structure={report.siteStructure} activeUrl={report.url} />
+                </div>
+              )}
+
               {/* ── Neural Analysis Hub (AI Insights) ── */}
               {report.aiInsights ? (
-                <div className="relative group overflow-hidden rounded-[48px]">
+                <div className="relative group overflow-hidden rounded-[40px]">
                   <div className="absolute inset-0 bg-gradient-to-br from-eu-accent/20 via-transparent to-transparent opacity-50" />
-                  <div className="relative glass-euphoria p-12 md:p-20 rounded-[48px] border-white/10">
-                    <div className="flex flex-col md:flex-row gap-12 items-start md:items-center mb-16">
-                      <div className="relative shrink-0 p-10 bg-slate-950 border border-eu-accent/30 rounded-[40px] shadow-neon">
+                  <div className="relative glass-euphoria p-8 md:p-14 rounded-[40px] border-white/10">
+                    <div className="flex flex-col md:flex-row gap-8 items-start md:items-center mb-10">
+                      <div className="relative shrink-0 p-10 bg-[var(--eu-bg-void)] border border-eu-accent/30 rounded-[40px] shadow-neon">
                         <Cpu size={72} className="text-eu-accent animate-pulse" />
                       </div>
                       <div className="flex-1 space-y-5">
@@ -488,8 +562,8 @@ const ReportDetail = ({ reportId, onBack }) => {
                           <div className="px-3 py-1.5 bg-eu-accent text-[10px] font-black uppercase tracking-[0.3em] rounded-xl shadow-neon text-white font-outfit">Cognitive Report</div>
                           <div className="px-3 py-1.5 bg-white/5 border border-white/5 text-[10px] font-black uppercase tracking-[0.3em] rounded-xl text-slate-500 font-outfit">{report.url}</div>
                         </div>
-                        <h3 className="text-2xl md:text-4xl font-black uppercase tracking-tight text-white leading-[1.1] font-outfit">
-                          {report.aiInsights.classification || 'Neutral State Detected'}
+                        <h3 className="text-2xl md:text-4xl font-black uppercase tracking-tight text-[var(--eu-text-main)] leading-[1.1] font-outfit">
+                          {report.status === 'completed' ? 'Analysis Completed' : report.status === 'in-progress' ? 'Analysis in Progress' : report.aiInsights?.classification || 'Neutral State Detected'}
                         </h3>
                         <p className="text-slate-300 text-xl md:text-2xl leading-relaxed font-medium font-outfit opacity-90 italic">
                           "{report.aiInsights.summary || 'Scan data is being synthesized into narrative insights...'}"
@@ -503,61 +577,79 @@ const ReportDetail = ({ reportId, onBack }) => {
                         <div className="text-[12px] font-black text-eu-accent uppercase tracking-[0.4em] flex items-center gap-4 pb-4 border-b border-white/5 font-outfit">
                           <AlertTriangle size={16} /> {report.aiInsights.issues.length} Critical Deviations Found
                         </div>
-                        <div className="grid grid-cols-1 gap-6">
+                        <div className="grid grid-cols-1 gap-5">
                           {report.aiInsights.issues.map((issue, idx) => {
-                            const sc = issue.severity === 'Critical' ? 'border-rose-500/40 bg-rose-500/5' : issue.severity === 'High' ? 'border-amber-500/40 bg-amber-500/5' : issue.severity === 'Medium' ? 'border-yellow-500/40 bg-yellow-500/5' : 'border-emerald-500/40 bg-emerald-500/5';
-                            const sb = issue.severity === 'Critical' ? 'bg-rose-500 text-white' : issue.severity === 'High' ? 'bg-amber-500 text-white' : issue.severity === 'Medium' ? 'bg-yellow-500 text-black' : 'bg-emerald-500 text-black';
+                            const sc = issue.severity === 'Critical' ? 'border-primary/40 bg-primary/5' : issue.severity === 'High' ? 'border-primary/40 bg-primary/5' : issue.severity === 'Medium' ? 'border-primary/40 bg-primary/5' : 'border-primary/40 bg-primary/5';
+                            const sb = issue.severity === 'Critical' ? 'bg-primary text-white' : issue.severity === 'High' ? 'bg-primary text-white' : issue.severity === 'Medium' ? 'bg-primary text-black' : 'bg-primary text-black';
                             return (
-                              <div key={idx} className={`border rounded-[32px] p-8 md:p-10 space-y-8 transition-all hover:translate-x-2 duration-500 ${sc}`}>
+                              <div key={idx} className={`border rounded-[28px] p-6 md:p-8 space-y-6 transition-all hover:translate-x-2 duration-500 ${sc} relative overflow-hidden`}>
+                                <div className="absolute top-0 right-0 p-4 opacity-5">
+                                  {issue.source === 'local' ? <Database size={48} /> : <Cpu size={48} />}
+                                </div>
                                 <div className="flex flex-wrap items-center gap-4">
                                   <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-xl ${sb} shadow-neon`}>{issue.severity}</span>
-                                  <span className="text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-xl bg-white/10 text-slate-300 border border-white/10 font-outfit">ETA: {issue.timeToFix}</span>
-                                  <h4 className="text-xl md:text-2xl font-black text-white font-outfit tracking-tight">{issue.title}</h4>
+                                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10">
+                                    {issue.source === 'local' ? <Database size={10} className="text-primary" /> : <Cpu size={10} className="text-eu-accent" />}
+                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eu-text-muted)] font-outfit">Source: {issue.source === 'local' ? 'Neural Cache' : 'AI Diagnostic'}</span>
+                                  </div>
+                                  <h4 className="text-xl md:text-2xl font-black text-[var(--eu-text-main)] font-outfit tracking-tight">{issue.title || issue.issue}</h4>
                                 </div>
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                   <div className="space-y-3">
-                                    <p className="text-[11px] font-black uppercase tracking-[0.3em] text-eu-accent font-outfit">Neural Mapping</p>
-                                    <p className="text-base text-slate-300 leading-relaxed font-medium">{issue.whatThisMeans}</p>
+                                    <p className="text-[11px] font-black uppercase tracking-[0.3em] text-eu-accent font-outfit">Issue Signature</p>
+                                    <p className="text-base text-slate-300 leading-relaxed font-medium">{issue.issue}</p>
                                   </div>
                                   <div className="space-y-3">
-                                    <p className="text-[11px] font-black uppercase tracking-[0.3em] text-amber-500 font-outfit">Impact Matrix</p>
-                                    <p className="text-base text-slate-300 leading-relaxed font-medium">{issue.whyItMatters}</p>
+                                    <p className="text-[11px] font-black uppercase tracking-[0.3em] text-primary font-outfit">Neural Root Cause</p>
+                                    <p className="text-base text-slate-300 leading-relaxed font-medium">{issue.reason}</p>
                                   </div>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                  {issue.howToFix?.beginner && (
-                                    <div className="p-6 bg-white/5 rounded-2xl border border-white/5 space-y-3">
-                                      <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400 font-outfit">Non-Technical Fix</p>
-                                      <p className="text-sm text-slate-400 leading-relaxed font-medium">{issue.howToFix.beginner}</p>
-                                    </div>
-                                  )}
-                                  {issue.howToFix?.developer && (
-                                    <div className="p-6 bg-white/5 rounded-2xl border border-white/5 space-y-3">
-                                      <p className="text-[11px] font-black uppercase tracking-[0.3em] text-eu-accent font-outfit">Developer Fix</p>
-                                      <p className="text-sm text-slate-400 font-mono leading-relaxed bg-black/40 p-4 rounded-xl border border-white/5">{issue.howToFix.developer}</p>
-                                    </div>
-                                  )}
+
+                                <div className="p-6 bg-white/5 rounded-2xl border border-white/5 space-y-4">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <Terminal size={14} className="text-primary" />
+                                    <p className="text-[11px] font-black uppercase tracking-[0.3em] text-primary font-outfit">Tactical Remediation Steps</p>
+                                  </div>
+                                  <div className="space-y-3">
+                                    {issue.fix?.map((step, sIdx) => (
+                                      <div key={sIdx} className="flex gap-4 items-start">
+                                        <div className="size-5 shrink-0 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-[10px] font-black text-primary">{sIdx + 1}</div>
+                                        <p className="text-sm text-slate-300 font-medium leading-relaxed opacity-80">{step}</p>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-                                {issue.remediationCode && (
-                                  <button 
-                                    onClick={() => setRemediationCode(issue.remediationCode)}
-                                    className="w-full py-5 bg-eu-accent/20 hover:bg-eu-accent text-white border border-eu-accent/40 rounded-2xl text-[11px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-4 transition-all shadow-neon group font-outfit"
-                                  >
-                                    <Code size={18} className="group-hover:rotate-12 transition-transform" />
-                                    Initialize Automated Patch Protocol
-                                  </button>
-                                )}
+
+                                  <div className="flex flex-col sm:flex-row gap-3">
+                                    {issue.remediationCode && (
+                                      <button
+                                        onClick={() => setRemediationCode(issue.remediationCode)}
+                                        className="flex-1 py-5 bg-eu-accent/20 hover:bg-eu-accent text-white border border-eu-accent/40 rounded-2xl text-[11px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-4 transition-all shadow-neon group font-outfit"
+                                      >
+                                        <Code size={18} className="group-hover:rotate-12 transition-transform" />
+                                        Deploy Automated Patch Protocol
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => onAskAI(`Deep dive into this ${issue.severity} finding: ${issue.title || issue.issue}. Give me a detailed remediation plan.`)}
+                                      className="flex-1 py-5 bg-primary/20 hover:bg-primary text-white border border-primary/40 rounded-2xl text-[11px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-4 transition-all shadow-neon group font-outfit"
+                                    >
+                                      <Bot size={18} className="group-hover:scale-110 transition-transform" />
+                                      Ask Sentinel GPT
+                                    </button>
+                                  </div>
                               </div>
                             );
                           })}
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-6 p-10 rounded-[32px] bg-emerald-500/5 border border-emerald-500/20 shadow-neon">
-                        <CheckCircle2 size={32} className="text-emerald-400 shrink-0" />
+                      <div className="flex items-center gap-6 p-10 rounded-[32px] bg-primary/5 border border-primary/20 shadow-neon">
+                        <CheckCircle2 size={32} className="text-primary shrink-0" />
                         <div>
-                          <p className="text-xl font-black text-emerald-400 font-outfit uppercase tracking-widest">Architectural Integrity Confirmed</p>
-                          <p className="text-sm text-slate-400 mt-1 font-medium italic">Sentinal AI has verified all nodes. No deviations from standard protocols were detected.</p>
+                          <p className="text-xl font-black text-primary font-outfit uppercase tracking-widest">Architectural Integrity Confirmed</p>
+                          <p className="text-sm text-[var(--eu-text-muted)] mt-1 font-medium italic">Sentinal AI has verified all nodes. No deviations from standard protocols were detected.</p>
                         </div>
                       </div>
                     )}
@@ -575,7 +667,7 @@ const ReportDetail = ({ reportId, onBack }) => {
                   </div>
                 </div>
               ) : report.status === 'completed' ? (
-                <div className="flex items-center gap-8 p-12 rounded-[40px] border border-white/5 bg-white/2 glass-euphoria">
+                <div className="flex items-center gap-8 p-12 rounded-[40px] border-[var(--eu-glass-border)] bg-[var(--eu-bg-card)] glass-euphoria">
                   <div className="size-16 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10 text-slate-500 shadow-inner"><Cpu size={32} /></div>
                   <div>
                     <p className="text-xl font-black text-slate-300 font-outfit uppercase tracking-widest">Neural Uplink Silenced</p>
@@ -584,17 +676,16 @@ const ReportDetail = ({ reportId, onBack }) => {
                 </div>
               ) : null}
 
-              {/* ── Quick Stats Grid ── */}
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
-                <StatCard label="Structural Health" value={`${healthScore}%`} color={healthScore > 80 ? 'text-emerald-400' : healthScore > 40 ? 'text-amber-500' : 'text-rose-500'} icon={<Shield size={24} />} />
+              {/* ── Quick Stats Grid (Optimized) ── */}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
                 <StatCard label="Neural Latency" value={`${report.performanceMetrics?.loadTime?.toFixed(0) || 0} ms`} color="text-eu-accent" icon={<Zap size={24} />} />
                 <StatCard label="Data Packets" value={report.performanceMetrics?.requestCount || 0} color="text-white" icon={<Wifi size={24} />} />
-                <StatCard label="Crawl Depth" value={report.pagesCrawled || 0} color="text-indigo-400" icon={<ExternalLink size={24} />} />
+                <StatCard label="Crawl Depth" value={report.pagesCrawled || 0} color="text-primary" icon={<ExternalLink size={24} />} />
               </div>
 
               {/* ── Lighthouse Performance Matrix ── */}
               {report.lighthouseScores && (
-                <div className="glass-euphoria p-10 md:p-16 rounded-[48px] border-white/5 shadow-2xl relative overflow-hidden">
+                <div className="glass-euphoria p-8 md:p-12 rounded-[40px] border-white/5 shadow-2xl relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-1 h-full bg-eu-accent/40" />
                   <div className="flex flex-col md:flex-row items-center justify-between gap-12">
                     <div className="max-w-xs space-y-4">
@@ -613,236 +704,120 @@ const ReportDetail = ({ reportId, onBack }) => {
 
 
 
-              {/* ── Smart Form Test Summary ── */}
-               {(report.smartFormTests?.length > 0) && (
-                 <div className="glass-euphoria p-5 rounded-2xl border border-white/5 space-y-6">
-                   <div className="flex items-center justify-between">
-                     <div className="flex items-center gap-4">
-                       <div className="size-10 bg-white/5 rounded-xl flex items-center justify-center border border-white/10 text-eu-accent shadow-neon"><CheckCircle2 size={16} /></div>
-                       <div>
-                         <h3 className="text-base font-black uppercase tracking-tight text-white font-outfit">Form <span className="text-eu-accent italic">Diagnostics</span></h3>
-                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] font-outfit mt-0.5 italic">{report.smartFormTests.length} test cycles</p>
-                       </div>
-                     </div>
-                     <button onClick={() => setActiveTab('smartformtests')} className="px-4 py-2 bg-eu-accent/10 hover:bg-eu-accent text-white border border-eu-accent/30 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-neon font-outfit">
-                       Analyze Cycles
-                     </button>
-                   </div>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                     {report.smartFormTests.slice(0, 3).map((test, i) => (
-                       <div key={i} className="group rounded-2xl overflow-hidden bg-white/5 border border-white/5 hover:border-eu-accent/30 transition-all duration-700 shadow-lg cursor-pointer" onClick={() => setPreviewImage(`http://localhost:5000${test.screenshot}`)}>
-                         <div className="relative aspect-video bg-black/40 overflow-hidden">
-                           {test.screenshot ? (
-                             <img src={`http://localhost:5000${test.screenshot}`} alt={test.formName} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 grayscale group-hover:grayscale-0" />
-                           ) : (
-                             <div className="w-full h-full flex items-center justify-center text-slate-600"><FormInput size={16} /></div>
-                           )}
-                           <div className="absolute top-2 left-2">
-                             <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest backdrop-blur-md border ${
-                               test.status === 'Blocked' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/20'
-                               : test.status === 'Accepted' ? 'bg-eu-accent/20 text-eu-accent border-eu-accent/20'
-                               : 'bg-amber-500/20 text-amber-400 border-amber-500/20'
-                             } shadow-neon`}>{test.status}</span>
-                           </div>
-                         </div>
-                         <div className="p-3 flex items-center justify-between gap-2">
-                           <div className="min-w-0">
-                             <p className="text-[9px] font-black text-eu-accent uppercase tracking-[0.2em] font-outfit">{test.formName}</p>
-                             <p className="text-[10px] font-bold text-slate-400 mt-1 leading-relaxed italic truncate font-outfit opacity-70">"{test.details}"</p>
-                           </div>
-                           <div className="size-7 bg-white/5 rounded-lg flex items-center justify-center text-slate-500 group-hover:text-eu-accent transition-all border border-white/5 shadow-inner flex-shrink-0">
-                               <ExternalLink size={10} />
-                           </div>
-                         </div>
-                       </div>
-                     ))}
-                   </div>
-                 </div>
-               )}
             </motion.div>
           )}
 
-          {activeTab !== 'summary' && activeTab !== 'screenshots' && activeTab !== 'smartformtests' && (
+          {activeTab !== 'summary' && activeTab !== 'screenshots' && (
             <motion.div key="table" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="glass p-6 rounded-2xl overflow-hidden">
-              <SectionHeader title={tabs.find(t => t.id === activeTab).label} icon={tabs.find(t => t.id === activeTab).icon} />
-              <IssueTable data={getTabData(report, activeTab)} columns={getTableColumns(activeTab)} setRemediationCode={setRemediationCode} />
+              <SectionHeader 
+                title={tabs.find(t => t.id === activeTab)?.label || 'Diagnostic'} 
+                icon={tabs.find(t => t.id === activeTab)?.icon || <Activity size={14} />} 
+              />
+              <IssueTable data={getTabData(report, activeTab)} columns={getTableColumns(activeTab)} setRemediationCode={setRemediationCode} onAskAI={onAskAI} />
             </motion.div>
           )}
 
-          {activeTab === 'smartformtests' && (
-            <motion.div key="smartformtests" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="space-y-8">
-              <div className="glass-euphoria p-6 md:p-8 rounded-[32px] border-white/5 shadow-2xl">
-                <div className="flex items-center gap-6 mb-10">
-                  <div className="size-12 bg-eu-accent/20 rounded-2xl flex items-center justify-center border border-eu-accent/30 text-eu-accent shadow-neon"><CheckCircle2 size={24} /></div>
-                  <div>
-                    <h3 className="text-xl md:text-2xl font-black uppercase tracking-tight text-white font-outfit">Smart Form <span className="text-eu-accent italic">Diagnostics</span></h3>
-                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] font-outfit mt-1 italic">{report.smartFormTests?.length || 0} autonomous injection cycles complete</p>
-                  </div>
-                </div>
-
-                {(!report.smartFormTests || report.smartFormTests.length === 0) ? (
-                  <div className="text-center py-32 rounded-[32px] bg-white/2 border border-dashed border-white/10">
-                    <div className="size-24 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-emerald-500/20"><CheckCircle2 className="text-emerald-500" size={40} /></div>
-                    <h3 className="text-2xl font-black text-white uppercase tracking-widest font-outfit mb-3">No Deviations Detected</h3>
-                    <p className="text-slate-500 text-sm max-w-sm mx-auto font-medium">Smart form testing did not identify any exploitable endpoints or structural vulnerabilities.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                    {report.smartFormTests.map((test, i) => {
-                      const isBlocked = test.status === 'Blocked';
-                      const isAccepted = test.status === 'Accepted';
-                      const statusColor = isBlocked
-                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-emerald-500/20'
-                        : isAccepted
-                        ? 'bg-eu-accent/10 text-eu-accent border-eu-accent/20 shadow-eu-accent/20'
-                        : 'bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-amber-500/20';
-                      
-                      return (
-                        <div key={i} className="group glass-euphoria rounded-2xl overflow-hidden border border-white/5 hover:border-eu-accent/30 transition-all duration-700 hover:-translate-y-1 flex flex-col shadow-xl">
-                          <div className="relative aspect-video bg-black/40 overflow-hidden border-b border-white/5">
-                            {test.screenshot ? (
-                              <img src={`http://localhost:5000${test.screenshot}`} alt={test.formName} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 grayscale group-hover:grayscale-0" />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center text-slate-700"><FormInput size={24} /></div>
-                            )}
-                            <div className="absolute top-3 left-3">
-                              <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest border ${statusColor} backdrop-blur-xl shadow-neon`}>
-                                {test.status}
-                              </span>
-                            </div>
-                            <div className="absolute top-3 right-3">
-                              <span className="px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest bg-black/60 border border-white/10 text-white backdrop-blur-xl">
-                                {test.testType}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="p-4 space-y-4 flex-1 flex flex-col justify-between bg-white/[0.02]">
-                            <div>
-                              <p className="text-[9px] font-black text-eu-accent uppercase tracking-[0.2em] font-outfit mb-2">{test.formName}</p>
-                              <p className="text-[11px] font-medium text-slate-300 leading-relaxed italic opacity-80 line-clamp-2">"{test.details}"</p>
-                            </div>
-                            <div className="pt-3 border-t border-white/5 flex items-center justify-between">
-                                <div className="flex flex-col gap-0.5">
-                                    <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest font-outfit">Confidence</span>
-                                    <span className={`text-[9px] font-black uppercase tracking-widest font-outfit ${test.confidence === 'High' ? 'text-emerald-400' : 'text-amber-400'}`}>{test.confidence} Pulse</span>
-                                </div>
-                                <button 
-                                  onClick={() => setPreviewImage(`http://localhost:5000${test.screenshot}`)}
-                                  className="size-8 bg-white/5 rounded-lg flex items-center justify-center text-slate-500 hover:text-eu-accent hover:bg-eu-accent/10 transition-all border border-white/5 shadow-inner"
-                                >
-                                    <ExternalLink size={12} />
-                                </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          )}
 
           {activeTab === 'screenshots' && (
-             <motion.div key="screenshots" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-               {(report.screenshots || []).map((s, i) => (
-                 <div key={i} className="group glass-euphoria p-3 rounded-2xl space-y-3 border border-white/5 hover:border-eu-accent/30 transition-all duration-700 hover:-translate-y-1 shadow-xl">
-                   <div className="aspect-video overflow-hidden rounded-xl bg-white/5 border border-white/10 shadow-inner relative">
-                     <img src={`http://localhost:5000${s.path}`} alt={s.page} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 grayscale group-hover:grayscale-0" />
-                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-3">
-                        <p className="text-[8px] font-black text-white uppercase tracking-widest">{s.page}</p>
-                     </div>
-                   </div>
-                   <div className="flex items-center justify-between px-1">
-                     <div className="space-y-0.5 min-w-0">
-                        <p className="text-[8px] font-black text-eu-accent uppercase tracking-[0.2em] font-outfit">{s.type}</p>
-                        <p className="text-[11px] font-black text-white truncate max-w-[150px] font-outfit">{s.page}</p>
-                     </div>
-                     <button 
-                       onClick={() => setPreviewImage(`http://localhost:5000${s.path}`)}
-                       className="size-8 bg-white/5 rounded-lg flex items-center justify-center text-slate-500 group-hover:text-eu-accent transition-all border border-white/5 shadow-inner"
-                     >
-                        <ExternalLink size={12} />
-                     </button>
-                   </div>
-                 </div>
-               ))}
-             </motion.div>
+            <motion.div key="screenshots" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {(report.screenshots || []).map((s, i) => (
+                <div key={i} className="group glass-euphoria p-3 rounded-2xl space-y-3 border border-[var(--eu-glass-border)] hover:border-eu-accent/30 transition-all duration-700 hover:-translate-y-1 shadow-xl">
+                  <div className="aspect-video overflow-hidden rounded-xl bg-[var(--eu-bg-void)]/60 border border-[var(--eu-glass-border)] shadow-inner relative">
+                    <img src={`http://localhost:5000${s.path}`} alt={s.page} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 grayscale group-hover:grayscale-0" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-3">
+                      <p className="text-[8px] font-black text-white uppercase tracking-widest">{s.page}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between px-1">
+                    <div className="space-y-0.5 min-w-0">
+                      <p className="text-[8px] font-black text-eu-accent uppercase tracking-[0.2em] font-outfit">{s.type}</p>
+                      <p className="text-[11px] font-black text-white truncate max-w-[150px] font-outfit">{s.page}</p>
+                    </div>
+                    <button
+                      onClick={() => setPreviewImage(`http://localhost:5000${s.path}`)}
+                      className="size-8 bg-[var(--eu-bg-void)]/60 rounded-lg flex items-center justify-center text-[var(--eu-text-main)] opacity-40 group-hover:text-eu-accent transition-all border border-[var(--eu-glass-border)] shadow-inner"
+                    >
+                      <ExternalLink size={12} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-       {/* ── Image Preview Modal ── */}
-       {previewImage && createPortal(
-         <AnimatePresence>
-           <motion.div
-             initial={{ opacity: 0 }}
-             animate={{ opacity: 1 }}
-             exit={{ opacity: 0 }}
-             onClick={() => setPreviewImage(null)}
-             className="fixed inset-0 z-[999] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 md:p-20"
-           >
-             <div className="absolute top-8 right-8 text-white/40 hover:text-white cursor-pointer transition-all hover:scale-110">
-                 <AlertCircle size={48} className="rotate-45" />
-             </div>
-             <motion.div
-               initial={{ scale: 0.95, opacity: 0, y: 30 }}
-               animate={{ scale: 1, opacity: 1, y: 0 }}
-               exit={{ scale: 0.95, opacity: 0, y: 30 }}
-               onClick={e => e.stopPropagation()}
-               className="relative max-w-7xl max-h-[92vh] glass-euphoria p-1.5 rounded-[32px] border-white/10 shadow-[0_0_120px_rgba(var(--eu-accent-rgb),0.25)] flex items-center justify-center"
-             >
-               <img src={previewImage} alt="Neural Preview" className="max-w-full max-h-[85vh] rounded-[26px] object-contain shadow-2xl" />
-             </motion.div>
-           </motion.div>
-         </AnimatePresence>,
-         document.body
-       )}
+      {/* ── Image Preview Modal ── */}
+      {previewImage && createPortal(
+        <AnimatePresence>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setPreviewImage(null)}
+            className="fixed inset-0 z-[999] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 md:p-20"
+          >
+            <div className="absolute top-8 right-8 text-white/40 hover:text-white cursor-pointer transition-all hover:scale-110">
+              <AlertCircle size={48} className="rotate-45" />
+            </div>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 30 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 30 }}
+              onClick={e => e.stopPropagation()}
+              className="relative max-w-7xl max-h-[92vh] glass-euphoria p-1.5 rounded-[32px] border-[var(--eu-glass-border)] shadow-[0_0_120px_rgba(var(--eu-accent-rgb),0.25)] flex items-center justify-center"
+            >
+              <img src={previewImage} alt="Neural Preview" className="max-w-full max-h-[85vh] rounded-[26px] object-contain shadow-2xl" />
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
 
-       {/* Remediation Modal */}
-       {remediationCode && createPortal(
-         <AnimatePresence>
-           <motion.div
-             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-             className="fixed inset-0 z-[999] flex items-center justify-center p-4 sm:p-10 bg-slate-950/90 backdrop-blur-xl"
-             onClick={() => setRemediationCode(null)}
-           >
-             <motion.div
-               initial={{ scale: 0.9, y: 40 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 40 }}
-               className="w-full max-w-4xl glass-euphoria rounded-[48px] overflow-hidden shadow-neon"
-               onClick={e => e.stopPropagation()}
-             >
-                <div className="flex items-center justify-between p-6 sm:p-8 border-b border-white/5 bg-white/2">
-                  <div className="flex items-center gap-4">
-                    <div className="size-12 bg-eu-accent/20 rounded-xl flex items-center justify-center border border-eu-accent/20 text-eu-accent shadow-neon"><Code size={20} /></div>
-                    <div>
-                      <h3 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-white font-outfit">AI <span className="premium-gradient-text">Remediation</span></h3>
-                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mt-1">Authenticated Logic Patch v4.2</p>
-                    </div>
+      {/* Remediation Modal */}
+      {remediationCode && createPortal(
+        <AnimatePresence>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[999] flex items-center justify-center p-4 sm:p-10 bg-[var(--eu-bg-overlay-modal)] backdrop-blur-xl"
+            onClick={() => setRemediationCode(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 40 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 40 }}
+              className="w-full max-w-4xl glass-euphoria rounded-[48px] overflow-hidden shadow-neon"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-6 sm:p-8 border-b border-[var(--eu-glass-border)] bg-[var(--eu-bg-void)]/40">
+                <div className="flex items-center gap-4">
+                  <div className="size-12 bg-eu-accent/20 rounded-xl flex items-center justify-center border border-eu-accent/20 text-eu-accent shadow-neon"><Code size={20} /></div>
+                  <div>
+                    <h3 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-[var(--eu-text-main)] font-outfit">AI <span className="premium-gradient-text">Remediation</span></h3>
+                    <p className="text-[9px] font-black text-[var(--eu-text-main)] opacity-40 uppercase tracking-[0.2em] mt-1">Authenticated Logic Patch v4.2</p>
                   </div>
-                 <button onClick={() => setRemediationCode(null)} className="size-12 hover:bg-white/5 rounded-2xl text-slate-500 flex items-center justify-center transition-all group">
-                   <AlertCircle size={28} className="rotate-45 group-hover:scale-110" />
-                 </button>
-               </div>
-               <div className="p-8 sm:p-12 space-y-10">
-                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 text-[11px] font-black uppercase tracking-industrial text-slate-500"><Terminal size={16} /> Recommended Syntax_Construct</div>
-                    <button 
-                      onClick={() => { navigator.clipboard.writeText(remediationCode); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-                      className="flex items-center gap-3 px-6 py-2.5 bg-white/5 hover:bg-eu-accent/20 rounded-xl text-[10px] font-black uppercase tracking-widest text-white transition-all border border-white/5 shadow-inner"
-                    >
-                      {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />} {copied ? 'Copied to Clipboard' : 'Copy Logic'}
-                    </button>
-                 </div>
-                 <div className="max-h-[450px] overflow-y-auto custom-scrollbar bg-black/60 rounded-[32px] border border-white/5 p-8 md:p-12 shadow-inner">
-                   <pre className="text-sm sm:text-base font-mono text-eu-accent/90 leading-relaxed whitespace-pre-wrap">{remediationCode}</pre>
-                 </div>
-               </div>
-             </motion.div>
-           </motion.div>
-         </AnimatePresence>,
-         document.body
-       )}
+                </div>
+                <button onClick={() => setRemediationCode(null)} className="size-12 hover:bg-[var(--eu-bg-void)]/40 rounded-2xl text-[var(--eu-text-main)] opacity-40 flex items-center justify-center transition-all group">
+                  <AlertCircle size={28} className="rotate-45 group-hover:scale-110" />
+                </button>
+              </div>
+              <div className="p-8 sm:p-12 space-y-10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 text-[11px] font-black uppercase tracking-industrial text-[var(--eu-text-main)] opacity-40"><Terminal size={16} /> Recommended Syntax_Construct</div>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(remediationCode); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                    className="flex items-center gap-3 px-6 py-2.5 bg-[var(--eu-bg-void)]/60 hover:bg-eu-accent/20 rounded-xl text-[10px] font-black uppercase tracking-widest text-[var(--eu-text-main)] transition-all border border-[var(--eu-glass-border)] shadow-inner"
+                  >
+                    {copied ? <Check size={14} className="text-primary" /> : <Copy size={14} />} {copied ? 'Copied to Clipboard' : 'Copy Logic'}
+                  </button>
+                </div>
+                <div className="max-h-[450px] overflow-y-auto custom-scrollbar bg-black/60 rounded-[32px] border border-[var(--eu-glass-border)] p-8 md:p-12 shadow-inner">
+                  <pre className="text-sm sm:text-base font-mono text-eu-accent/90 leading-relaxed whitespace-pre-wrap">{remediationCode}</pre>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 };

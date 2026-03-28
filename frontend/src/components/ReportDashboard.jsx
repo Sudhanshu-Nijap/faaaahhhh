@@ -28,18 +28,18 @@ const MenuButton = ({ icon, label, onClick, danger, isDark }) => {
     fontSize: '13px', fontWeight: 500, textAlign: 'left', transition: 'all 0.18s ease',
     background: hovered
       ? danger
-        ? isDark ? 'rgba(239,68,68,0.15)' : 'rgba(254,242,242,1)'
-        : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(241,245,249,1)'
+        ? isDark ? 'rgba(var(--eu-accent-rgb), 0.15)' : 'rgba(var(--eu-accent-rgb), 0.1)'
+        : isDark ? 'rgba(var(--eu-accent-rgb), 0.1)' : 'var(--eu-hover-bg)'
       : 'transparent',
     color: danger
-      ? hovered ? (isDark ? '#fca5a5' : '#dc2626') : (isDark ? '#f87171' : '#ef4444')
-      : isDark ? '#e2e8f0' : '#1e293b',
+      ? hovered ? (isDark ? 'var(--eu-accent)' : 'var(--eu-accent)') : (isDark ? 'var(--eu-accent)' : 'var(--eu-accent)')
+      : isDark ? 'var(--eu-text-main)' : 'var(--eu-text-main)',
   };
   const iconStyle = {
     color: danger
-      ? hovered ? (isDark ? '#fca5a5' : '#dc2626') : '#f87171'
-      : hovered ? (isDark ? '#a78bfa' : '#6366f1') : (isDark ? '#64748b' : '#94a3b8'),
-    filter: hovered && isDark && !danger ? 'drop-shadow(0 0 5px rgba(167,139,250,0.8))' : 'none',
+      ? hovered ? (isDark ? 'var(--eu-accent)' : 'var(--eu-accent)') : 'var(--eu-accent)'
+      : hovered ? 'var(--eu-accent)' : 'var(--eu-text-muted)',
+    filter: hovered && isDark && !danger ? 'drop-shadow(0 0 5px rgba(var(--eu-accent-rgb), 0.8))' : 'none',
     transition: 'all 0.18s ease',
     flexShrink: 0,
   };
@@ -56,7 +56,7 @@ const MenuButton = ({ icon, label, onClick, danger, isDark }) => {
   );
 };
 
-const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme }) => {
+const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme, onDeleteReport, confirm, prompt, setAlert }) => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -80,6 +80,7 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme }) => 
     try {
       await axios.delete(`http://localhost:5000/api/report/${id}`);
       setReports(reports.filter(r => r._id !== id));
+      if (onDeleteReport) onDeleteReport(id);
     } catch (error) {
       console.error('Failed to purge report', error);
       alert('Failed to purge report. Link integrity check may be failing.');
@@ -109,7 +110,11 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme }) => 
   };
 
   const handleRename = async (id, currentName) => {
-    const newName = window.prompt("Enter new name for this session:", currentName);
+    const newName = await prompt({
+        title: "Rename Session",
+        message: `Current identification: ${currentName}`,
+        confirmText: "Update Name"
+    });
     if (!newName || newName === currentName) return;
     try {
       const { data } = await axios.patch(`http://localhost:5000/api/report/${id}/rename`, { name: newName });
@@ -202,7 +207,7 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme }) => 
                 {selectedReports.length > 0 && (
                     <button 
                       onClick={() => setSelectedReports([])}
-                      className="px-3 h-7 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20 text-[9px] font-black uppercase shadow-neon"
+                      className="px-3 h-7 rounded-xl bg-primary/10 text-primary border border-primary/20 text-[9px] font-black uppercase shadow-neon"
                     >
                       Clear Selection ({selectedReports.length})
                     </button>
@@ -226,14 +231,21 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme }) => 
               )}
               <button 
                 onClick={async () => {
-                  if (window.confirm(`Purge ${selectedReports.length} selected records? This is irreversible.`)) {
+                  const confirmed = await confirm({
+                    title: "Batch Purge Protocol",
+                    message: `Initiate permanent deletion of ${selectedReports.length} selected records? This action cannot be reversed.`,
+                    confirmText: "Purge All",
+                    type: "danger"
+                  });
+                  if (confirmed) {
                     for (const id of selectedReports) {
                       await handleDelete(id);
                     }
                     setSelectedReports([]);
+                    setAlert({ type: 'success', message: `${selectedReports.length} traces purged from neural index.` });
                   }
                 }}
-                className="h-14 px-8 bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white rounded-[20px] text-[12px] font-black uppercase tracking-widest border border-rose-500/20 transition-all flex items-center gap-3"
+                className="h-14 px-8 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-[20px] text-[12px] font-black uppercase tracking-widest border border-primary/20 transition-all flex items-center gap-3"
               >
                 <Trash2 size={16} />
                 Purge Selected
@@ -242,19 +254,19 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme }) => 
           )}
 
           <div className="relative flex-1 md:w-80 group">
-            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-eu-accent transition-colors size-5" />
+            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-[var(--eu-text-muted)] group-focus-within:text-eu-accent transition-colors size-5" />
             <input 
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Filter Lattice..."
-              className="w-full h-14 bg-white/5 border border-white/5 rounded-[20px] pl-14 pr-6 text-[13px] font-black tracking-industrial uppercase focus:outline-none focus:border-eu-accent/30 focus:bg-white/10 transition-all placeholder:text-slate-700 shadow-inner"
+              className="w-full h-14 bg-[var(--eu-bg-card)] border border-[var(--eu-glass-border)] rounded-[20px] pl-14 pr-6 text-[13px] font-black tracking-industrial uppercase focus:outline-none focus:border-primary/30 focus:shadow-neon transition-all placeholder:text-[var(--eu-text-main)] placeholder:opacity-20 shadow-lg"
             />
           </div>
           
           <button 
             onClick={() => fetchReports()}
-            className="w-14 h-14 bg-white/5 border border-white/5 rounded-[20px] flex items-center justify-center hover:border-eu-accent/30 text-slate-500 hover:text-white transition-all active:scale-95"
+            className="w-14 h-14 bg-[var(--eu-bg-card)] border border-[var(--eu-glass-border)] rounded-[20px] flex items-center justify-center hover:border-eu-accent/30 text-[var(--eu-text-main)] opacity-40 hover:opacity-100 transition-all active:scale-95 shadow-lg"
           >
             <RefreshCcw size={18} className={loading ? 'animate-spin text-eu-accent' : ''} />
           </button>
@@ -285,7 +297,7 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme }) => 
             <div className="w-16 h-16 sm:w-20 sm:h-20 bg-primary/5 rounded-[24px] sm:rounded-[30px] flex items-center justify-center mx-auto mb-6 sm:mb-8 border border-primary/5">
               <Database className="text-primary/10 size-8 sm:size-[36px]" />
             </div>
-            <h3 className="text-xl sm:text-2xl font-black text-white mb-2 sm:mb-4 uppercase tracking-tight">System Index Clear</h3>
+            <h3 className="text-xl sm:text-2xl font-black text-[var(--eu-text-main)] mb-2 sm:mb-4 uppercase tracking-tight">System Index Clear</h3>
             <p className="text-text-muted text-sm sm:text-lg max-w-sm mx-auto font-medium opacity-40 leading-relaxed">
               No authenticated diagnostic signatures found in the current localized memory sector.
             </p>
@@ -307,6 +319,9 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme }) => 
                     onRename={handleRename}
                     onArchive={handleArchive}
                     onGroupChart={toggleSelect}
+                    confirm={confirm}
+                    prompt={prompt}
+                    setAlert={setAlert}
                     onOpenMenu={(id, pos) => {
                       setMenuPosition({
                         top: pos.top,
@@ -341,13 +356,13 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme }) => 
              initial={{ opacity: 0 }} 
              animate={{ opacity: 1 }} 
              exit={{ opacity: 0 }}
-             className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-12 bg-slate-950/90 backdrop-blur-xl"
+             className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-12 bg-[var(--eu-bg-overlay)] backdrop-blur-xl"
              onClick={() => setComparisonResults(null)}
            >
              <motion.div 
                initial={{ scale: 0.9, y: 20 }}
                animate={{ scale: 1, y: 0 }}
-               className="w-full max-w-4xl bg-slate-900 border border-primary/20 rounded-[40px] overflow-hidden shadow-2xl overflow-y-auto max-h-[90vh]"
+               className="w-full max-w-4xl glass-euphoria border border-primary/20 rounded-[40px] overflow-hidden shadow-2xl overflow-y-auto max-h-[90vh]"
                onClick={e => e.stopPropagation()}
              >
                <div className="p-8 sm:p-12 space-y-10">
@@ -357,42 +372,42 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme }) => 
                         <History className="text-primary size-8" />
                       </div>
                       <div>
-                        <h2 className="text-3xl sm:text-4xl font-black italic uppercase tracking-tight text-white">Shadow <span className="premium-gradient-text">Scan Analysis</span></h2>
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">Cross-Environment UI Regression Index</p>
+                        <h2 className="text-3xl sm:text-4xl font-black italic uppercase tracking-tight text-[var(--eu-text-main)]">Shadow <span className="premium-gradient-text">Scan Analysis</span></h2>
+                        <p className="text-[10px] font-black text-[var(--eu-text-main)] opacity-40 uppercase tracking-widest mt-1">Cross-Environment UI Regression Index</p>
                       </div>
                    </div>
                    <div className="text-right">
-                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Visual Integrity Score</span>
-                      <span className={`text-4xl font-black italic tracking-tighter ${comparisonResults.score > 90 ? 'text-emerald-500' : 'text-rose-500'}`}>{comparisonResults.score}%</span>
+                      <span className="text-[10px] font-black text-[var(--eu-text-main)] opacity-40 uppercase tracking-widest block mb-1">Visual Integrity Score</span>
+                      <span className={`text-4xl font-black italic tracking-tighter text-primary shadow-neon`}>{comparisonResults.score}%</span>
                    </div>
                  </div>
 
-                 <div className="p-8 bg-white/5 border border-white/10 rounded-[32px]">
-                   <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-4">Neural Overview</p>
-                   <p className="text-lg text-slate-300 font-medium italic leading-relaxed">"{comparisonResults.summary}"</p>
-                 </div>
+                  <div className="p-8 bg-[var(--eu-bg-card)] border border-[var(--eu-glass-border)] rounded-[32px]">
+                    <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-4">Neural Overview</p>
+                    <p className="text-lg text-[var(--eu-text-main)] opacity-80 font-medium italic leading-relaxed">"{comparisonResults.summary}"</p>
+                  </div>
 
                  <div className="space-y-6">
-                    <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest border-b border-rose-500/20 pb-4">Identified Regressions ({comparisonResults.differences?.length || 0})</p>
+                    <p className="text-[10px] font-black text-primary uppercase tracking-widest border-b border-primary/20 pb-4">Identified Regressions ({comparisonResults.differences?.length || 0})</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {comparisonResults.differences?.map((diff, i) => (
-                        <div key={i} className="p-6 bg-slate-800/40 border border-white/5 rounded-2xl space-y-3">
+                        <div key={i} className="p-6 bg-[var(--eu-bg-void)]/40 border border-white/5 rounded-2xl space-y-3">
                           <div className="flex items-center gap-3">
-                            <span className="px-2 py-0.5 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded text-[8px] font-black uppercase">{diff.severity}</span>
+                            <span className="px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded text-[8px] font-black uppercase">{diff.severity}</span>
                             <h4 className="text-sm font-black text-white uppercase tracking-tight">{diff.issue}</h4>
                           </div>
-                          <p className="text-xs text-slate-400 leading-relaxed">{diff.details}</p>
+                          <p className="text-xs text-[var(--eu-text-muted)] leading-relaxed">{diff.details}</p>
                         </div>
                       ))}
                     </div>
                  </div>
 
-                 <button 
-                   onClick={() => setComparisonResults(null)}
-                   className="w-full py-6 bg-white/5 border border-white/10 rounded-3xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:bg-white/10 transition-all font-outfit"
-                 >
-                   Deactivate Shadow Interface
-                 </button>
+                  <button 
+                    onClick={() => setComparisonResults(null)}
+                    className="w-full py-6 bg-[var(--eu-bg-void)]/60 border border-[var(--eu-glass-border)] rounded-3xl text-[10px] font-black uppercase tracking-widest text-[var(--eu-text-main)] opacity-40 hover:opacity-100 transition-all font-outfit"
+                  >
+                    Deactivate Shadow Interface
+                  </button>
                </div>
              </motion.div>
            </motion.div>
@@ -415,11 +430,11 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme }) => 
           const panelStyle = isDark ? {
             position: 'fixed', top: menuPosition.top, left: menuPosition.left, zIndex: 999999,
             width: '14rem',
-            background: 'rgba(14, 14, 18, 0.97)',
+            background: 'var(--eu-bg-card-glass)',
             backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
-            border: '1px solid rgba(139, 92, 246, 0.2)',
+            border: '1px solid rgba(var(--eu-accent-rgb), 0.2)',
             borderRadius: '16px', padding: '6px',
-            boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(139,92,246,0.15), 0 24px 60px rgba(139,92,246,0.15)',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(var(--eu-accent-rgb), 0.15), 0 24px 60px rgba(var(--eu-accent-rgb),0.15)',
             overflow: 'hidden',
           } : {
             position: 'fixed', top: menuPosition.top, left: menuPosition.left, zIndex: 999999,
@@ -474,8 +489,8 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme }) => 
 
 const StatsPanel = ({ label, value, primary }) => (
   <div className={`p-8 glass-euphoria flex flex-col items-center gap-2 rounded-[32px] ${primary ? 'border-eu-accent/30 bg-eu-accent/5 shadow-neon' : ''}`}>
-    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 opacity-60">{label}</p>
-    <p className={`text-2xl font-black font-outfit ${primary ? 'text-white' : 'text-slate-200'}`}>{value}</p>
+    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--eu-text-muted)] opacity-60">{label}</p>
+    <p className={`text-2xl font-black font-outfit ${primary ? 'text-primary' : 'text-[var(--eu-text-main)]'}`}>{value}</p>
   </div>
 );
 

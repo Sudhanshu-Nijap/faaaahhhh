@@ -13,38 +13,9 @@ const scanReportSchema = new mongoose.Schema({
         recommendation: String,
         suggestedFix: String
     }],
-    consoleErrors: [{
-        page: String,
-        message: String,
-        type: String,
-        location: String,
-        recommendation: String,
-        suggestedFix: String
-    }],
-    uiIssues: [{
-        page: String,
-        issue: String,
-        details: String,
-        recommendation: String,
-        suggestedFix: String
-    }],
-    chaosSubmissions: [{
-        page: String,
-        formSelector: String,
-        payload: String,
-        outcome: String, // 'Impact Detected', 'System Resilience', 'Error 500'
-        details: String,
-        riskLevel: String // 'Critical', 'Moderate', 'Secure'
-    }],
-    smartFormTests: [{
-        page: String,
-        formName: String,
-        testType: String, // 'Empty', 'Invalid', 'Valid'
-        status: String, // 'Blocked', 'Accepted', 'Flagged'
-        details: String,
-        screenshot: String,
-        confidence: String // 'High', 'Medium', 'Low'
-    }],
+    consoleErrors: [mongoose.Schema.Types.Mixed],
+    uiIssues: [mongoose.Schema.Types.Mixed],
+    formIssues: [mongoose.Schema.Types.Mixed],
     networkLogs: [mongoose.Schema.Types.Mixed],
     performanceMetrics: {
         loadTime: Number,
@@ -67,45 +38,46 @@ const scanReportSchema = new mongoose.Schema({
         recommendation: String,
         suggestedFix: String
     }],
-    accessibilityIssues: [{
-        page: String,
-        issue: String,
-        severity: String,
-        element: String,
-        recommendation: String,
-        suggestedFix: String
-    }],
+    accessibilityIssues: [mongoose.Schema.Types.Mixed],
+    securityIssues: [mongoose.Schema.Types.Mixed],
     screenshots: [mongoose.Schema.Types.Mixed],
     aiInsights: {
         classification: String,
         summary: String,
         issues: [{
-            title: String,
-            whatThisMeans: String,
-            whyItMatters: String,
-            howToFix: {
-                beginner: String,
-                developer: String
-            },
-            remediationCode: String, // NEW: Full copy-pasteable code fix
-            autoFix: String,
-            severity: String,
-            timeToFix: String,
-            example: String
+            source: { type: String, enum: ['local', 'llm'] },
+            title: String, // UI friendly name
+            issue: String, // Short explanation
+            reason: String, // Why it happened
+            fix: [String], // Step-by-step solution array
+            severity: { type: String, enum: ['Low', 'Medium', 'High', 'Critical'] },
+            suggested_pattern: String, // Normalized error pattern
+            remediationCode: String,
+            timeToFix: String
         }],
         keyFindings: [String],
         criticalVulnerabilities: [String]
     },
-    liveEvents: [{ // NEW: For Cyber-Range Live Fuzzing
-        timestamp: { type: Date, default: Date.now },
-        type: String, // 'INFO', 'ATTACK', 'IMPACT', 'SUCCESS'
-        message: String,
-        source: String // 'ChaosAgent', 'SmartForm', etc.
-    }],
+    siteStructure: {
+        nodes: [{ id: String, label: String, url: String, depth: Number }],
+        links: [{ source: String, target: String }]
+    },
+    healthScore: { type: Number, default: 0 },
     isPinned: { type: Boolean, default: false },
     isShared: { type: Boolean, default: false },
     isArchived: { type: Boolean, default: false },
-    customName: { type: String }
+    customName: { type: String },
+    scannedModules: [String], // NEW: Track what was audited
+    mode: { type: String, default: 'full' }, // NEW: 'specific' or 'full'
+    chatHistory: [{
+        role: { type: String, enum: ['user', 'ai'] },
+        content: String,
+        timestamp: String
+    }]
 }, { timestamps: true });
+
+// Tactical Indexes for performance and caching
+scanReportSchema.index({ url: 1, userId: 1, createdAt: -1 });
+scanReportSchema.index({ userId: 1, isPinned: -1, scanDate: -1 });
 
 module.exports = mongoose.model('ScanReport', scanReportSchema);

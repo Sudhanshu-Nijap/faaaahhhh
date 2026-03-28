@@ -1,0 +1,18 @@
+2026-03-27T13:36:28.345Z - analyzeReportQuestion - 404 {"error":{"message":"The model `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` does not exist or you do not have access to it.","type":"invalid_request_error","code":"model_not_found"}}
+Error: 404 {"error":{"message":"The model `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` does not exist or you do not have access to it.","type":"invalid_request_error","code":"model_not_found"}}
+    at APIError.generate (C:\Users\sudha\OneDrive\Desktop\vasantdada\backend\node_modules\groq-sdk\core\error.js:49:20)
+    at Groq.makeStatusError (C:\Users\sudha\OneDrive\Desktop\vasantdada\backend\node_modules\groq-sdk\client.js:127:32)
+    at Groq.makeRequest (C:\Users\sudha\OneDrive\Desktop\vasantdada\backend\node_modules\groq-sdk\client.js:269:30)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async ChatAgent.analyzeReportQuestion (C:\Users\sudha\OneDrive\Desktop\vasantdada\backend\services\chatAgent.js:58:28)
+    at async C:\Users\sudha\OneDrive\Desktop\vasantdada\backend\routes\chatRoutes.js:30:24
+
+2026-03-27T13:37:34.460Z - analyzeReportQuestion - 404 {"error":{"message":"The model `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` does not exist or you do not have access to it.","type":"invalid_request_error","code":"model_not_found"}}
+Error: 404 {"error":{"message":"The model `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` does not exist or you do not have access to it.","type":"invalid_request_error","code":"model_not_found"}}
+    at APIError.generate (C:\Users\sudha\OneDrive\Desktop\vasantdada\backend\node_modules\groq-sdk\core\error.js:49:20)
+    at Groq.makeStatusError (C:\Users\sudha\OneDrive\Desktop\vasantdada\backend\node_modules\groq-sdk\client.js:127:32)
+    at Groq.makeRequest (C:\Users\sudha\OneDrive\Desktop\vasantdada\backend\node_modules\groq-sdk\client.js:269:30)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async ChatAgent.analyzeReportQuestion (C:\Users\sudha\OneDrive\Desktop\vasantdada\backend\services\chatAgent.js:58:28)
+    at async C:\Users\sudha\OneDrive\Desktop\vasantdada\backend\routes\chatRoutes.js:30:24
+

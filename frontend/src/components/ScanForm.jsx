@@ -7,6 +7,7 @@ const ScanForm = ({ onScanStarted }) => {
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [chaosIntensity, setChaosIntensity] = useState('standard');
 
   // Mouse tilt effect logic
   const x = useMotionValue(0);
@@ -74,7 +75,11 @@ const ScanForm = ({ onScanStarted }) => {
     setLoading(true);
     try {
       const userId = localStorage.getItem('userId');
-      const response = await axios.post('http://localhost:5000/api/scan', { url: targetUrl, userId });
+      const response = await axios.post('http://localhost:5000/api/scan', { 
+        url: targetUrl, 
+        userId,
+        chaosIntensity 
+      });
       onScanStarted(response.data.reportId);
       setUrl('');
     } catch (err) {
@@ -98,9 +103,9 @@ const ScanForm = ({ onScanStarted }) => {
         className="w-full max-w-3xl mx-auto relative z-20"
       >
         <form onSubmit={handleSubmit} className="relative group">
-          <div className="absolute -inset-1 bg-gradient-to-r from-primary/30 to-secondary/30 rounded-[32px] blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity duration-700" />
+          <div className="absolute -inset-1 bg-transparent rounded-[32px] blur-2xl transition-opacity duration-700" />
           
-          <div className={`relative glass-card p-2 sm:p-3 transition-all duration-500 border-white/10 ${error ? 'border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.1)]' : 'group-focus-within:border-primary/50 group-focus-within:glow-shadow'} rounded-[24px] sm:rounded-[28px]`}>
+          <div className={`relative bg-white dark:bg-black p-2 sm:p-3 transition-all duration-500 border border-[var(--eu-glass-border)] ${error ? 'border-primary/50 shadow-[0_0_20px_rgba(var(--eu-accent-rgb),0.1)]' : 'group-focus-within:border-primary/50 group-focus-within:glow-shadow'} rounded-[24px] sm:rounded-[28px] shadow-2xl`}>
             <div className="flex flex-col md:flex-row items-center gap-2 sm:gap-4">
               <div className="flex-1 relative flex items-center w-full">
                 <div className="absolute left-5 sm:left-6 text-text-muted/50 group-focus-within:text-primary transition-colors">
@@ -114,7 +119,7 @@ const ScanForm = ({ onScanStarted }) => {
                     if (error) setError('');
                   }}
                   placeholder="Infrastructure URL (e.g., https://example.com)"
-                  className="w-full h-14 sm:h-16 bg-transparent border-none pl-12 sm:pl-16 pr-4 sm:pr-6 text-sm sm:text-lg font-bold focus:outline-none text-white placeholder-white/10"
+                  className="w-full h-14 sm:h-16 bg-transparent border-none pl-12 sm:pl-16 pr-4 sm:pr-6 text-sm sm:text-lg font-bold focus:outline-none text-[var(--eu-text-main)] placeholder-[var(--eu-text-main)] placeholder:opacity-20"
                 />
               </div>
 
@@ -136,17 +141,45 @@ const ScanForm = ({ onScanStarted }) => {
               </button>
             </div>
           </div>
+
+          <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-10">
+            <div className="flex items-center gap-3 bg-[var(--eu-bg-void)] px-4 py-2 rounded-2xl border border-[var(--eu-glass-border)]">
+              <span className="text-[9px] font-black uppercase tracking-widest text-text-muted/60">Chaos Intensity:</span>
+              <div className="flex gap-1.5 p-1 bg-[var(--eu-bg-void)]/20 rounded-xl">
+                {['minimal', 'standard', 'maximum'].map((level) => (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => setChaosIntensity(level)}
+                    className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${
+                      chaosIntensity === level 
+                        ? 'bg-primary text-white shadow-neon scale-105' 
+                      : 'text-[var(--eu-text-main)] opacity-40 hover:opacity-100 hover:bg-[var(--eu-bg-void)]/10'
+                    }`}
+                  >
+                    {level}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
           
           <AnimatePresence>
             {error && (
               <motion.div 
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="absolute -bottom-10 left-0 right-0 flex items-center justify-center gap-2 text-rose-500 text-[10px] font-black uppercase tracking-widest"
+                initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                className="absolute -bottom-14 left-0 right-0 flex items-center justify-center pointer-events-none"
               >
-                <Sparkles size={12} className="animate-pulse" />
-                <span>Error: {error}</span>
+                <div className="bg-primary/10 backdrop-blur-xl border border-primary/20 px-6 py-2.5 rounded-2xl flex items-center gap-3 shadow-[0_10px_30px_-10px_rgba(var(--eu-accent-rgb),0.3)]">
+                  <div className="size-5 bg-primary/20 rounded-lg flex items-center justify-center text-primary">
+                    <Sparkles size={10} className="animate-pulse" />
+                  </div>
+                  <span className="text-primary text-[10px] font-black uppercase tracking-[0.2em]">
+                    System Failure: <span className="text-white/80">{error}</span>
+                  </span>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -154,11 +187,11 @@ const ScanForm = ({ onScanStarted }) => {
 
         <div className="mt-6 sm:mt-8 flex flex-wrap justify-center gap-4 sm:gap-8 opacity-40 text-[8px] sm:text-[10px] font-black uppercase tracking-[0.2em]">
            <div className="flex items-center gap-2">
-              <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+              <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-primary shadow-[0_0_8px_var(--eu-glow)]" />
               <span>Diagnostic Ready</span>
            </div>
            <div className="flex items-center gap-2">
-              <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+              <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-eu-accent-violet shadow-[0_0_8px_var(--eu-glow-violet)]" />
               <span>Nodes Synchronized</span>
            </div>
         </div>

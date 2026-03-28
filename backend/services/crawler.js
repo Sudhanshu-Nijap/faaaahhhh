@@ -1,30 +1,39 @@
 const { chromium } = require('playwright');
 const ScanReport = require('../models/ScanReport');
 const axios = require('axios');
+const path = require('path');
 
 /**
- * crawlWebsite - Universal Crawler with Broken Link Detection
- *
- * Discovers all internal pages (up to maxPages) and validates
- * every link (internal + external) by making HEAD/GET requests.
- * Uses Playwright for SPA support (React/Angular/Vue).
+ * crawlWebsite - Universal Crawler with Discovery Constraints
+ * @param {Object} options - { maxPages, maxDepth, emitProgress }
  */
-const crawlWebsite = async (reportId, baseUrl) => {
+const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
     const visited = new Set();
-    const queue = [baseUrl];
+    const queue = [{ url: baseUrl, depth: 0 }]; // Track depth per URL
     const internalPages = new Set();
     const allLinks = new Set();
     const brokenLinks = [];
-    const maxPages = 15;
+    
+    // Constraints
+    const maxPages = options.maxPages || 15;
+    const maxDepth = options.maxDepth !== undefined ? options.maxDepth : 2;
     const maxLinks = 80;
+    const structure = { nodes: [], links: [] };
 
+    const progress = (p, s) => {
+        if (emitProgress) emitProgress(p, s);
+    };
+    
     let domain;
     try {
         domain = new URL(baseUrl).hostname;
     } catch (_) {
         console.error(`[Crawler]: Invalid URL: ${baseUrl}`);
+        progress(1, "Error: Invalid target URL.");
         return [baseUrl];
     }
+
+    progress(7, `Initializing crawl for ${domain}...`);
 
     let browser;
     try {
@@ -40,34 +49,83 @@ const crawlWebsite = async (reportId, baseUrl) => {
 
         // ─── Phase 1: Crawl internal pages ──────────────────────────────
         while (queue.length > 0 && visited.size < maxPages) {
-            const url = queue.shift();
-            if (visited.has(url)) continue;
+            const { url, depth } = queue.shift();
+            if (visited.has(url) || depth > maxDepth) continue;
             visited.add(url);
 
             console.log(`[Crawler]: Visiting ${url}`);
             try {
-                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
-                await page.waitForTimeout(1500); // Let JS render
+                const pathName = new URL(url).pathname || '/';
+                progress(7 + Math.floor((visited.size / maxPages) * 3), `Crawling: ${pathName}`);
+            } catch (e) {
+                progress(7 + Math.floor((visited.size / maxPages) * 3), `Crawling: ${url.substring(0, 20)}...`);
+            }
+            
+            try {
+                // Multi-stage navigation strategy for maximum resilience
+                try {
+                    await page.goto(url, { waitUntil: 'load', timeout: 30000 });
+                } catch (e) {
+                    console.warn(`[Crawler]: 'load' timed out for ${url}, trying 'domcontentloaded'...`);
+                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+                }
+                
+                await page.waitForTimeout(2000); // Allow additional time for dynamic SPAs
                 internalPages.add(url);
+
+                // Capture Page Screenshot
+                const screenshotName = `screenshot-${Date.now()}-${visited.size}.png`;
+                const screenshotPath = path.join(__dirname, '../screenshots', screenshotName);
+                try {
+                    await page.screenshot({ path: screenshotPath, fullPage: false });
+                    await ScanReport.findByIdAndUpdate(reportId, {
+                        $push: { screenshots: { page: url, path: `/screenshots/${screenshotName}`, type: 'Crawl Snapshot' } }
+                    });
+                } catch (ssErr) {
+                    console.warn(`[Crawler]: Screenshot failed for ${url}: ${ssErr.message}`);
+                }
+
+                // ── Site Structure Mapping ──────────────────────────────────
+                const pathName = new URL(url).pathname || '/';
+                const nodeId = url; 
+                
+                // Add node if not exists
+                const nodeExists = structure.nodes.find(n => n.id === nodeId);
+                if (!nodeExists) {
+                    structure.nodes.push({ id: nodeId, label: pathName, url, depth });
+                }
 
                 // Extract all links
                 const links = await page.evaluate(() =>
                     Array.from(document.querySelectorAll('a[href]'))
-                        .map(a => a.href)
-                        .filter(href => href.startsWith('http') && !href.includes('#') && !href.includes('mailto:') && !href.includes('tel:') && !href.includes('javascript:'))
+                        .map(a => ({ href: a.href, text: a.innerText.trim() }))
+                        .filter(l => l.href.startsWith('http') && !l.href.includes('#') && !l.href.includes('mailto:') && !l.href.includes('tel:') && !l.href.includes('javascript:'))
                 );
 
-                for (const link of links) {
+                for (const linkGroup of links) {
+                    const link = linkGroup.href;
                     allLinks.add(link);
                     try {
-                        const linkHostname = new URL(link).hostname;
-                        if (linkHostname === domain && !visited.has(link) && !queue.includes(link)) {
-                            queue.push(link);
+                        const linkUrl = new URL(link);
+                        const linkHostname = linkUrl.hostname;
+                        
+                        if (linkHostname === domain) {
+                             // Internal Link - Add to structure
+                             const targetId = link;
+                             const linkExists = structure.links.find(l => l.source === nodeId && l.target === targetId);
+                             if (!linkExists && nodeId !== targetId) {
+                                 structure.links.push({ source: nodeId, target: targetId });
+                             }
+
+                             if (!visited.has(link) && !queue.find(q => q.url === link)) {
+                                 queue.push({ url: link, depth: depth + 1 });
+                             }
                         }
                     } catch (_) {}
                 }
             } catch (e) {
                 console.warn(`[Crawler]: Failed to crawl ${url}: ${e.message}`);
+                progress(7, `Warning: Failed to reach ${url.slice(0, 30)}...`);
             }
         }
 
@@ -76,10 +134,11 @@ const crawlWebsite = async (reportId, baseUrl) => {
 
         // ─── Phase 2: Broken Link Check with Promise.all ─────────────────
         console.log(`[Crawler]: Checking ${Math.min(allLinks.size, maxLinks)} links for breakage...`);
+        progress(12, `Verifying ${Math.min(allLinks.size, maxLinks)} links...`);
         const linksToCheck = [...allLinks].slice(0, maxLinks);
 
         await Promise.allSettled(
-            linksToCheck.map(async (link) => {
+            linksToCheck.map(async (link, idx) => {
                 try {
                     let status = 0;
                     try {
@@ -125,7 +184,7 @@ const crawlWebsite = async (reportId, baseUrl) => {
         );
 
         // ─── Persist results ──────────────────────────────────────────────
-        const update = { $set: { pagesCrawled: internalPages.size } };
+        const update = { $set: { pagesCrawled: internalPages.size, siteStructure: structure } };
         if (brokenLinks.length > 0) {
             update.$push = { brokenLinks: { $each: brokenLinks } };
             console.log(`[Crawler]: ${brokenLinks.length} broken links found.`);
@@ -133,10 +192,12 @@ const crawlWebsite = async (reportId, baseUrl) => {
 
         await ScanReport.findByIdAndUpdate(reportId, update);
         console.log(`[Crawler]: Discovered ${internalPages.size} internal pages.`);
+        progress(15, `Crawled ${internalPages.size} pages. Launching deep scanners...`);
         return Array.from(internalPages);
 
     } catch (error) {
         console.error(`[Crawler] Critical failure: ${error.message}`);
+        progress(15, "Crawler encountered a non-fatal error. Continuing...");
         return [baseUrl];
     } finally {
         if (browser) await browser.close();

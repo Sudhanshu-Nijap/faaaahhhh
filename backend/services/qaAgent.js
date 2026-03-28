@@ -1,127 +1,132 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Groq = require('groq-sdk');
 const ScanReport = require('../models/ScanReport');
+const fs = require('fs');
+const path = require('path');
 
-/**
- * qaAgent - AI QA Assistant for Non-Technical Users
- *
- * Analyzes all scan data and produces structured, plain-English
- * issue explanations with severity, fix steps, auto-fix tips, and examples.
- */
+const LOG_FILE = path.join(__dirname, '../groq_errors.log');
+
+// Helper: wrap promise with timeout
+const withTimeout = (promise, ms, taskName) => {
+    const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`${taskName} timed out after ${ms}ms`)), ms)
+    );
+    return Promise.race([promise, timeout]);
+};
+
 class QAAgent {
-    constructor(reportId, apiKey) {
+    constructor(reportId) {
         this.reportId = reportId;
-        this.genAI = new GoogleGenerativeAI(apiKey);
-        this.model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const apiKey = process.env.GROQ_QA_API_KEY || process.env.GROQ_API_KEY;
+        this.groq = new Groq({ apiKey });
+        this.modelName = process.env.GROQ_QA_MODEL || 'llama-3.3-70b-versatile';
     }
 
     async analyzeResults(currentReport) {
         const prompt = `
-You are a helpful AI QA Assistant designed for NON-TECHNICAL USERS.
-Your job is to analyze the website audit report below and explain each issue in the simplest way possible.
-Use friendly, clear language. Use real-life analogies where helpful. Act like a helpful teacher, not a robot.
-
-REPORT DATA:
-- URL: ${currentReport.url}
-- Broken Links: ${currentReport.brokenLinks?.length || 0}${currentReport.brokenLinks?.slice(0,2).map(l => ' [' + l.link?.substring(0,60) + ']').join('') || ''}
-- Console Errors: ${currentReport.consoleErrors?.length || 0}${currentReport.consoleErrors?.slice(0,2).map(e => ' [' + (e.message || '').substring(0,60) + ']').join('') || ''}
-- UI/Layout Issues: ${currentReport.uiIssues?.length || 0}
-- Network Failures (4xx/5xx): ${currentReport.networkLogs?.filter(n => n.status >= 400)?.length || 0}
-- Security Issues: ${currentReport.accessibilityIssues?.length || 0}
-- Chaos Lab Impacts: ${currentReport.chaosSubmissions?.filter(s => s.outcome === 'Impact Detected')?.length || 0}
-- Page Load Time: ${currentReport.performanceMetrics?.loadTime || 0}ms
-- Lighthouse Performance: ${currentReport.lighthouseScores?.performance || 0}
-- Lighthouse Accessibility: ${currentReport.lighthouseScores?.accessibility || 0}
-- Lighthouse SEO: ${currentReport.lighthouseScores?.seo || 0}
-
-Based on the above, identify the TOP issues and explain them clearly.
-
-Respond in this EXACT JSON format (raw JSON only, no markdown, no code blocks):
-            "issues": [
-                {
-                    "title": "Simple name for the issue",
-                    "whatThisMeans": "Simple explanation with analogy.",
-                    "whyItMatters": "Business/User impact.",
-                    "howToFix": {
-                        "beginner": "Instructions for non-tech.",
-                        "developer": "Instructions for devs."
-                    },
-                    "remediationCode": "Full, copy-pasteable code block (e.g. Nginx config, Express middleware, or CSS fix).",
-                    "autoFix": "Quick tip or tool.",
-                    "severity": "Low | Medium | High | Critical",
-                    "timeToFix": "e.g. 15 minutes",
-                    "example": "Before/After"
+            Analyze website diagnostic data for: ${currentReport.url}
+            
+            AUDIT DATA:
+            - CONSOLE ERRORS: ${JSON.stringify(currentReport.consoleErrors || [])}
+            - NETWORK FAILURES: ${JSON.stringify(currentReport.networkLogs || [])}
+            - LIGHTHOUSE SCORES: ${JSON.stringify(currentReport.lighthouseScores || {})}
+            - ACCESSIBILITY ISSUES: ${JSON.stringify(currentReport.accessibilityIssues || [])}
+            - FORM DIAGNOSTICS: ${JSON.stringify(currentReport.formIssues || [])}
+            
+            TASK: 
+            Provide a technical classification (e.g., PERFORMANCE_CRITICAL, ACCESSIBILITY_FAILED, HYGIENE_STABLE), 
+            a concise high-level summary, and a list of the top 3 most urgent issues.
+            
+            OUTPUT FORMAT (STRICT JSON ONLY):
+            {
+              "classification": "STATUS",
+              "summary": "1-2 sentence executive overview",
+              "issues": [
+                { 
+                  "title": "Short UI friendly title",
+                  "issue": "What is the problem?",
+                  "reason": "Why did it happen?",
+                  "fix": ["Step 1", "Step 2"],
+                  "severity": "Critical|High|Medium|Low",
+                  "source": "llm"
                 }
-            ]
-        }
-
-RULES:
-- Only generate issues for problems that actually appear in the report data.
-- If the site looks healthy, return 0 issues with a positive summary.
-- Maximum 5 issues.
-- Always use simple English. No jargon.
+              ]
+            }
         `;
 
         try {
-            const result = await this.model.generateContent(prompt);
-            const responseText = result.response.text();
-
-            // Strip markdown code fences if Gemini wraps in them
-            const stripped = responseText
-                .replace(/```json/gi, '')
-                .replace(/```/g, '')
-                .trim();
-
-            const cleanJson = stripped.substring(
-                stripped.indexOf("{"),
-                stripped.lastIndexOf("}") + 1
+            const result = await withTimeout(
+                this.groq.chat.completions.create({
+                    messages: [{ role: 'user', content: prompt }],
+                    model: this.modelName,
+                    temperature: 0.2,
+                    response_format: { type: "json_object" }
+                }),
+                15000,
+                'Groq Analysis'
             );
-
-            const aiData = JSON.parse(cleanJson);
+            
+            const parsed = JSON.parse(result.choices[0].message.content);
+            await ScanReport.findByIdAndUpdate(this.reportId, {
+                aiInsights: {
+                    classification: parsed.classification || 'ANALYSIS COMPLETE',
+                    summary: parsed.summary || 'Strategic audit complete.',
+                    issues: (parsed.issues || []).slice(0, 5)
+                }
+            });
+        } catch (e) {
+            console.warn(`[qaAgent]: Neural analysis pulse failed (${e.message}). Triggering local high-fidelity synthesis...`);
+            
+            // --- Local High-Fidelity Synthesis (Failover) ---
+            const localIssues = [];
+            if (currentReport.lighthouseScores?.performance < 50) {
+                localIssues.push({
+                    title: "Critical Performance Bottleneck",
+                    issue: "Homepage load speed is significantly below baseline.",
+                    reason: "Heavy script execution or unoptimized assets detected.",
+                    fix: ["Analyze main thread activity", "Implement aggressive asset compression"],
+                    severity: "High",
+                    source: "local"
+                });
+            }
+            if ((currentReport.consoleErrors || []).length > 0) {
+                localIssues.push({
+                    title: "Runtime Exceptions Detected",
+                    issue: `${currentReport.consoleErrors.length} JavaScript errors captured in console.`,
+                    reason: "Client-side code crashes or missing dependencies.",
+                    fix: ["Review console logs in the Console tab", "Fix target script exceptions"],
+                    severity: "Critical",
+                    source: "local"
+                });
+            }
+            if ((currentReport.accessibilityIssues || []).length > 0) {
+                localIssues.push({
+                    title: "ADA Compliance Non-Conformity",
+                    issue: "Structural accessibility violations detected.",
+                    reason: "Missing ARIA attributes or semantic HTML violations.",
+                    fix: ["Review specific failures in Accessibility tab", "Apply recommended ARIA patches"],
+                    severity: "Medium",
+                    source: "local"
+                });
+            }
 
             await ScanReport.findByIdAndUpdate(this.reportId, {
                 aiInsights: {
-                    classification: aiData.classification || 'Analysis Complete',
-                    summary: aiData.summary || '',
-                    issues: (aiData.issues || []).map(iss => ({
-                        ...iss,
-                        remediationCode: iss.remediationCode || ''
-                    }))
+                    classification: 'LOCAL_SYNTHESIS',
+                    summary: 'AI analysis timed out. Displaying local diagnostic summary based on raw telemetry.',
+                    issues: localIssues
                 }
             });
 
-            console.log(`[qaAgent]: AI analysis saved — ${aiData.issues?.length || 0} issue(s) identified for ${this.reportId}`);
-        } catch (e) {
-            console.error("[qaAgent]: AI analysis failed:", e.message);
-
-            // Fallback: simple rule-based summary
-            const total = (currentReport.brokenLinks?.length || 0) +
-                          (currentReport.consoleErrors?.length || 0) +
-                          (currentReport.uiIssues?.length || 0);
-            const classification = total > 10 ? 'Critical Fixes Needed' : total > 0 ? 'Needs Attention' : 'Working Well';
-            const summary = total > 10
-                ? "Several significant problems were found. Your website has broken links, errors, and layout issues that need urgent attention."
-                : total > 0
-                ? "A few issues were detected on your website. They are not critical but should be fixed to improve user experience."
-                : "Your website is looking healthy! No major issues were detected in this scan.";
-
-            await ScanReport.findByIdAndUpdate(this.reportId, {
-                aiInsights: { classification, summary, issues: [] }
-            });
+            const entry = `${new Date().toISOString()} - qaAgent - ${e.message}\n`;
+            fs.appendFileSync(LOG_FILE, entry);
         }
     }
 }
 
 const runAgent = async (reportId) => {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        console.warn("[qaAgent]: No GEMINI_API_KEY found. Skipping AI analysis.");
-        return;
-    }
-
     const report = await ScanReport.findById(reportId);
     if (!report) return;
-
-    const agent = new QAAgent(reportId, apiKey);
+    const agent = new QAAgent(reportId);
     await agent.analyzeResults(report);
 };
 

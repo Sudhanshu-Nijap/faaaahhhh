@@ -1,20 +1,21 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
 const router = express.Router();
 const ScanReport = require('../models/ScanReport');
 const crawler = require('../services/crawler');
 const qaScanner = require('../services/qaScanner');
 const qaAgent = require('../services/qaAgent');
-const securityScanner = require('../services/securityScanner');
-const apiTester = require('../services/apiTester');
-const flowTester = require('../services/flowTester');
-const chaosAgent = require('../services/chaosAgent');
-const smartFormAgent = require('../services/smartFormAgent');
 const reportExporter = require('../services/reportExporter');
+const scanEngine = require('../services/scanEngine');
+
+// Global registry of tactical workers for lifecycle control
+const activeWorkers = new Map();
 
 // ── Start a new scan ──────────────────────────────────────────────────────────
 router.post('/scan', async (req, res) => {
-    const { url, userId } = req.body;
+    const { url, userId, force, singlePageOnly, tests, scope, mode } = req.body;
     if (!url) return res.status(400).json({ error: 'URL is required' });
     if (!userId) return res.status(400).json({ error: 'User ID is required' });
 
@@ -26,13 +27,34 @@ router.post('/scan', async (req, res) => {
     catch (e) { return res.status(400).json({ error: 'Invalid URL format.' }); }
 
     try {
-        const report = new ScanReport({ url, userId, status: 'in-progress' });
-        await report.save();
-
         // Run scan fully async — returns reportId immediately to the client
-        runFullScan(report._id, url);
+        const { reportId, isCached } = await startScan(url, userId, force, singlePageOnly, tests, scope, mode);
 
-        res.status(202).json({ message: 'Scan started', reportId: report._id });
+        if (isCached) {
+            return res.status(200).json({
+                message: 'Using cached report',
+                reportId: reportId,
+                isCached: true
+            });
+        } else {
+            res.status(202).json({ message: 'Scan started', reportId: reportId });
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── Get the most recent active/in-progress scan for a user ─────────────────────
+router.get('/scan/active/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const activeScan = await ScanReport.findOne({ 
+            userId, 
+            status: 'in-progress' 
+        }).sort({ createdAt: -1 });
+
+        if (!activeScan) return res.status(200).json({ message: 'No active scan in progress', status: 'idle' });
+        res.json(activeScan);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -55,6 +77,8 @@ router.get('/report/:id', async (req, res) => {
     try {
         const report = await ScanReport.findById(req.params.id);
         if (!report) return res.status(404).json({ error: 'Report not found' });
+
+        // Return full report - filtering removed to ensure total data visibility
         res.json(report);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -65,10 +89,10 @@ router.patch('/report/:id/pin', async (req, res) => {
     try {
         const report = await ScanReport.findById(req.params.id);
         if (!report) return res.status(404).json({ error: 'Report not found' });
-        
+
         report.isPinned = !report.isPinned;
         await report.save({ validateBeforeSave: false }); // Bypass validation for tactical updates
-        
+
         res.json(report);
     } catch (error) {
         console.error("Pin toggle error:", error);
@@ -117,10 +141,48 @@ router.patch('/report/:id/archive', async (req, res) => {
 // ── Delete a specific report ──────────────────────────────────────────────────
 router.delete('/report/:id', async (req, res) => {
     try {
-        const report = await ScanReport.findByIdAndDelete(req.params.id);
+        const report = await ScanReport.findById(req.params.id);
         if (!report) return res.status(404).json({ error: 'Report not found' });
-        res.json({ message: 'Report deleted successfully' });
+
+        // Terminate any active tactical worker for this report
+        const activeWorker = activeWorkers.get(req.params.id);
+        if (activeWorker) {
+            console.log(`[Main]: Terminating active worker for deleted report ${req.params.id}`);
+            await activeWorker.terminate();
+            activeWorkers.delete(req.params.id);
+        }
+
+        // Clean up full page screenshots
+        if (report.screenshots && report.screenshots.length > 0) {
+            report.screenshots.forEach(screenshot => {
+                if (screenshot.path) {
+                    const imgPath = path.join(__dirname, '..', screenshot.path);
+                    if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+                }
+            });
+        }
+
+        // Clean up smart form test screenshots
+        if (report.smartFormTests && report.smartFormTests.length > 0) {
+            report.smartFormTests.forEach(test => {
+                if (test.screenshot) {
+                    const imgPath = path.join(__dirname, '..', test.screenshot);
+                    if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+                }
+            });
+        }
+
+        // Clean up exported PDF report
+        const pdfPath = path.join(__dirname, '..', 'reports', `report-${req.params.id}.pdf`);
+        if (fs.existsSync(pdfPath)) {
+            fs.unlinkSync(pdfPath);
+        }
+
+        await ScanReport.findByIdAndDelete(req.params.id);
+
+        res.json({ message: 'Report and associated files deleted successfully' });
     } catch (error) {
+        console.error('[Delete Report Error]:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -136,6 +198,128 @@ router.get('/report/:id/export', async (req, res) => {
     }
 });
 
+// ── Stop an active scan ───────────────────────────────────────────────────────
+router.post('/stop', async (req, res) => {
+    try {
+        const { reportId } = req.body;
+        if (!reportId) return res.status(400).json({ error: 'Report ID required' });
+
+        const worker = activeWorkers.get(reportId.toString());
+        if (!worker) return res.status(404).json({ error: 'Active scan not found' });
+
+        await worker.terminate();
+        activeWorkers.delete(reportId.toString());
+
+        await ScanReport.findByIdAndUpdate(reportId, { status: 'failed', customName: 'Scan Terminated by User' });
+
+        if (global.io) {
+            global.io.to(reportId.toString()).emit('scan-progress', { percent: 100, stage: 'Scan Terminated.', status: 'failed' });
+        }
+
+        res.json({ message: 'Neural scan terminated successfully.' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── Historical Trends ──────────────────────────────────────────────────────────
+router.get('/stats/trends', async (req, res) => {
+    try {
+        const { url, userId } = req.query;
+        if (!url || !userId) return res.status(400).json({ error: 'URL and UserID required' });
+
+        const history = await ScanReport.find({ url, userId, status: 'completed' })
+            .select('healthScore performanceMetrics lighthouseScores createdAt')
+            .sort({ createdAt: 1 })
+            .limit(10);
+            
+        res.json(history);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * calculateReportHealth - Centralized logic for scoring a report.
+ * Matches the frontend weighting system.
+ */
+const calculateReportHealth = (report) => {
+    if (!report) return 0;
+    const weights = {
+        network: 0.5,
+        links: 10,
+        console: 2,
+        ui: 5,
+        accessibility: 15
+    };
+    const counts = {
+        network: report.networkLogs?.length || 0,
+        links: report.brokenLinks?.length || 0,
+        console: report.consoleErrors?.length || 0,
+        ui: (report.uiIssues?.length || 0) + (report.responsiveIssues?.length || 0),
+        accessibility: report.accessibilityIssues?.length || 0
+    };
+
+    const deductions = Object.keys(weights).reduce((acc, key) => {
+        return acc + (counts[key] * weights[key]);
+    }, 0);
+
+    return Math.max(0, Math.round(100 - deductions));
+};
+
+/**
+ * startScan - Initiates the background scan process.
+ * Separated from runFullScan for cleaner async handling.
+ */
+async function startScan(baseUrl, userId, force = false, chaosIntensity = 'standard', singlePageOnly = false, tests = [], scope = 'single', mode = 'specific') {
+    // ── CACHE CHECK ──────────────────────────────────────────────────────
+    if (!force) {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const existingReport = await ScanReport.findOne({
+            url: baseUrl,
+            userId,
+            status: 'completed',
+            createdAt: { $gt: oneHourAgo }
+        }).sort({ createdAt: -1 });
+
+        if (existingReport) {
+            console.log(`[Cache]: Reusing recent report for ${baseUrl}`);
+            return { reportId: existingReport._id, isCached: true };
+        }
+    }
+
+    const defaultModules = ['console', 'network', 'lighthouse', 'accessibility', 'links', 'ui', 'forms'];
+    let finalModules = defaultModules;
+    
+    if (Array.isArray(tests) && tests.length > 0) {
+        finalModules = tests;
+    } else if (typeof tests === 'string' && tests.length > 0) {
+        try {
+            const parsed = JSON.parse(tests);
+            if (Array.isArray(parsed)) finalModules = parsed;
+        } catch (_) {
+            // If it's a string like "site" or "full", we use defaults as it's not a module list
+            finalModules = defaultModules;
+        }
+    }
+
+    const report = new ScanReport({ 
+        url: baseUrl, 
+        userId, 
+        status: 'in-progress',
+        scannedModules: finalModules,
+        mode: mode || 'full'
+    });
+    await report.save();
+
+    // Launch background processor
+    runFullScan(report._id, baseUrl, chaosIntensity, singlePageOnly, finalModules, scope, mode).catch(e => {
+        console.error(`[Pipeline Critical Failure]: ${e.message}`);
+    });
+
+    return { reportId: report._id, isCached: false };
+}
+
 // ── Helper: wrap promise with timeout ────────────────────────────────────────
 const withTimeout = (promise, ms, taskName) => {
     const timeout = new Promise((_, reject) =>
@@ -144,76 +328,51 @@ const withTimeout = (promise, ms, taskName) => {
     return Promise.race([promise, timeout]);
 };
 
-// ── Core Scan Pipeline ───────────────────────────────────────────────────────
 /**
- * FLOW:
- * 1. Crawl → discover all internal pages
- * 2. For each page: run all diagnostic scanners IN PARALLEL
- * 3. After ALL pages are scanned → run AI analysis ONCE on complete data
- * 4. Mark report as completed
+ * runFullScan - Spawns a background worker thread for the pipeline.
  */
-async function runFullScan(reportId, baseUrl) {
-    try {
-        console.log(`\n╔══════════════════════════════════════════════╗`);
-        console.log(`║  SENTINEL SCAN STARTED: ${baseUrl}`);
-        console.log(`╚══════════════════════════════════════════════╝\n`);
+async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = false, tests = [], scope = 'single', mode = 'specific') {
+    const { Worker } = require('worker_threads');
+    const path = require('path');
 
-        // ── STEP 1: Crawl ────────────────────────────────────────────────────
-        const pages = await crawler.crawlWebsite(reportId, baseUrl);
-        console.log(`[Pipeline]: Discovered ${pages.length} page(s): ${pages.join(', ')}`);
-        await ScanReport.findByIdAndUpdate(reportId, { pagesCrawled: pages.length });
+    console.log(`[Main]: Spawning Tactical Worker for ${reportId}...`);
 
-        // ── STEP 2: Scan each page ───────────────────────────────────────────
-        for (const pageUrl of pages) {
-            console.log(`\n[Scanning]: ${pageUrl}`);
+    const worker = new Worker(path.join(__dirname, '../workers/scanWorker.js'), {
+        workerData: { reportId: reportId.toString(), baseUrl, chaosIntensity, singlePageOnly, tests, scope, mode }
+    });
 
-            const tasks = [
-                withTimeout(qaScanner.scanPage(reportId, pageUrl),         120000, 'qaScanner'),
-                withTimeout(securityScanner.testSecurity(reportId, pageUrl), 30000, 'securityScanner'),
-                withTimeout(apiTester.testAPI(reportId, pageUrl),           60000, 'apiTester'),
-                withTimeout(flowTester.testFlows(reportId, pageUrl),        90000, 'flowTester'),
-                withTimeout(chaosAgent.runChaos(reportId, pageUrl),         90000, 'chaosAgent'),
-                withTimeout(smartFormAgent.runTest(reportId, pageUrl),      90000, 'smartFormAgent'),
-            ].map(p => p.catch(e => console.warn(`[Scanner Warning]: ${e.message}`)));
+    activeWorkers.set(reportId.toString(), worker);
 
-            await Promise.allSettled(tasks);
-            console.log(`[Pipeline]: All scanners settled for ${pageUrl}`);
+    worker.on('message', (msg) => {
+        if (msg.type === 'progress') {
+            if (global.io) {
+                global.io.to(reportId.toString()).emit('scan-progress', { 
+                    reportId: reportId.toString(),
+                    percent: msg.percent, 
+                    stage: msg.stage, 
+                    status: 'in-progress' 
+                });
+            }
         }
-
-        // ── STEP 3: AI Analysis (runs ONCE after ALL pages are done) ─────────
-        // This ensures the AI sees the complete picture, not just one page.
-        console.log(`\n[AI Analysis]: Running on complete scan data...`);
-        try {
-            await qaAgent.runAgent(reportId);
-            console.log(`[AI Analysis]: Done ✓`);
-        } catch (agentErr) {
-            console.warn(`[AI Analysis Warning]: ${agentErr.message}`);
+        if (msg.type === 'failed') {
+            if (global.io) {
+                global.io.to(reportId.toString()).emit('scan-progress', { 
+                    percent: 100, 
+                    stage: 'Scan failed: ' + msg.error, 
+                    status: 'failed' 
+                });
+            }
         }
+    });
 
-        // ── STEP 4: Mark complete ────────────────────────────────────────────
-        const finalReport = await ScanReport.findByIdAndUpdate(reportId, { status: 'completed' }, { new: true });
+    worker.on('error', (err) => {
+        console.error('[Main]: Worker Critical Error:', err);
+    });
 
-        // ── STEP 5: Neural Orchestration (n8n Webhook) ───────────────────────
-        const n8nService = require('../services/n8nService');
-        await n8nService.dispatch(finalReport.userId, finalReport);
-
-        // ── STEP 6: Direct Tactical Alerts (Slack/Discord) ───────────────────
-        const User = require('../models/User');
-        const user = await User.findById(finalReport.userId);
-        const notificationService = require('../services/notificationService');
-
-        // Discord Dispatch (User Custom -> Global Fallback)
-        const discordTarget = user?.discordWebhookUrl || process.env.DISCORD_WEBHOOK_URL;
-        if (discordTarget) await notificationService.sendDiscordAlert(discordTarget, finalReport);
-
-        console.log(`\n╔══════════════════════════════════════════════╗`);
-        console.log(`║  SCAN COMPLETE: ${reportId}`);
-        console.log(`╚══════════════════════════════════════════════╝\n`);
-
-    } catch (error) {
-        console.error('[Pipeline Critical Failure]:', error.message);
-        await ScanReport.findByIdAndUpdate(reportId, { status: 'failed' });
-    }
+    worker.on('exit', (code) => {
+        console.log(`[Main]: Tactical Worker exited with code ${code}`);
+        activeWorkers.delete(reportId.toString());
+    });
 }
 
-module.exports = { router, runFullScan };
+module.exports = { router, runFullScan, activeWorkers };

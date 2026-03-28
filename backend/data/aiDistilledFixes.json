@@ -1,0 +1,14 @@
+[
+  {
+    "query": "Analyze this finding from the report: https://www.linkedin.com/in/ravindra-sonavane-93a90a161/",
+    "fixSummary": "**Analysis of Broken Link: https://www.linkedin.com/in/ravindra-sonavane-93a90a161/**\n=============================================\n\n### Details\n\n* **Page**: https://hackstomp.com\n* **Link**: https://www.linkedin.com/in/ravindra-sonavane-93a90a161/\n* **Status**: 999\n* **Recommendation**: Server error on destination. Contact server owner.\n\n### Remediation\n\nTo fix this broken link, we need to ensure that the LinkedIn profile is accessible. Since the status code is 999, it indicates a server error.",
+    "timestamp": "2026-03-27T20:58:12.949Z",
+    "status": "pending-review"
+  },
+  {
+    "query": "Analyze this finding from the report: https://www.linkedin.com/in/ravindra-sonavane-93a90a161/",
+    "fixSummary": "**Analysis of Broken Link: https://www.linkedin.com/in/ravindra-sonavane-93a90a161/**\n=============================================\n\n### Details\n\n* **Page**: https://hackstomp.com\n* **Link**: https://www.linkedin.com/in/ravindra-sonavane-93a90a161/\n* **Status**: 999\n* **Recommendation**: Server error on destination. Contact server owner.\n\n### Remediation\n\nTo fix this broken link, we need to handle the server error on the destination LinkedIn profile. However, since we cannot control the server-s",
+    "timestamp": "2026-03-27T20:58:13.464Z",
+    "status": "pending-review"
+  }
+]
