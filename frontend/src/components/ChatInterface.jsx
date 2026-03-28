@@ -25,7 +25,7 @@ const DateSeparator = ({ date }) => (
 const SystemMessage = ({ content }) => (
   <div className="flex justify-center my-2">
     <div className="px-3 py-1 bg-white/5 border border-white/5 rounded-full flex items-center gap-2">
-      <Activity size={9} className="text-eu-accent animate-pulse" />
+      <Activity size={9} className="text-eu-accent" />
       <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{content}</span>
     </div>
   </div>
@@ -174,7 +174,12 @@ const ChatInterface = ({
       }
     });
 
-    return () => socket.disconnect();
+    return () => {
+      socket.off('connect');
+      socket.off('new-message');
+      socket.off('scan-progress');
+      socket.disconnect();
+    };
   }, [activeChatId]);
 
   // Handle pending message from parent (e.g. redirected from report view)
@@ -190,7 +195,10 @@ const ChatInterface = ({
 
   // Track in-progress scan via Socket
   useEffect(() => {
-    if (!globalScanProgress) return;
+    if (!globalScanProgress) {
+      setIsScanning(false);
+      return;
+    }
     const { status, percent } = globalScanProgress;
 
     if (status === 'in-progress' || (percent > 0 && percent < 100)) {
@@ -277,7 +285,7 @@ const ChatInterface = ({
       try {
         const { data: { chatId } } = await axios.post('http://localhost:5000/api/chat/thread/start', { url: targetUrl, userId });
         await axios.post(`http://localhost:5000/api/chat/thread/${chatId}/message`, { type: 'user', content: targetUrl });
-        await axios.post(`http://localhost:5000/api/chat/thread/${chatId}/message`, { type: 'system', content: 'Initiating diagnostic scan...' });
+        await axios.post(`http://localhost:5000/api/chat/thread/${chatId}/message`, { type: 'system', content: 'Diagnostic Scan Initiated' });
         const { data: scanData } = await axios.post('http://localhost:5000/api/scan', {
           url: targetUrl, userId, force: true, chatId,
           scope: scanParams.scope, mode: scanParams.mode, tests: scanParams.tests
@@ -314,7 +322,7 @@ const ChatInterface = ({
         if (!targetUrl) { setIsTyping(false); return; }
 
         await axios.post(`http://localhost:5000/api/chat/thread/${activeChatId}/message`, { type: 'user', content: finalInput });
-        await axios.post(`http://localhost:5000/api/chat/thread/${activeChatId}/message`, { type: 'system', content: 'Running rescan...' });
+        await axios.post(`http://localhost:5000/api/chat/thread/${activeChatId}/message`, { type: 'system', content: 'Rescan Initiated' });
         const { data: scanData } = await axios.post('http://localhost:5000/api/scan', {
           url: targetUrl, userId, force: true, chatId: activeChatId,
           scope: scanParams.scope, mode: scanParams.mode, tests: scanParams.tests
@@ -341,12 +349,18 @@ const ChatInterface = ({
         message: finalInput,
         scanReportId: latestReport?.scanReportId || null
       });
-      setMessages(prev => [...prev, {
-        _id: data.message?._id || 'tmp-ai-' + Date.now(),
-        type: 'ai',
-        content: data.reply,
-        createdAt: new Date()
-      }]);
+      setMessages(prev => {
+        const newMsgId = data.message?._id;
+        if (newMsgId && prev.some(m => m._id === newMsgId)) {
+          return prev;
+        }
+        return [...prev, {
+          _id: newMsgId || 'tmp-ai-' + Date.now(),
+          type: 'ai',
+          content: data.reply,
+          createdAt: data.message?.createdAt || new Date()
+        }];
+      });
     } catch (err) {
       const errMsg = err.response?.data?.error || err.message || 'Neural uplink failure.';
       console.error('[Ask AI Error]:', errMsg);
@@ -543,45 +557,43 @@ const ChatInterface = ({
 
       {/* ── Footer / Input ── */}
       <div className="p-3 bg-[var(--eu-bg-void)] z-10 border-t border-[var(--eu-glass-border)]">
-        {/* Scan params (only when no active chat) */}
-        {!activeChatId && (
-          <div className="max-w-5xl mx-auto mb-3 space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
-                {['single', 'site'].map(s => (
-                  <button key={s} onClick={() => setScanParams(p => ({ ...p, scope: s }))}
-                    className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${scanParams.scope === s ? 'bg-primary text-white shadow-neon' : 'text-[var(--eu-text-muted)] hover:text-white'}`}>
-                    {s === 'single' ? 'Single Page' : 'Full Site'}
-                  </button>
-                ))}
-              </div>
-              <button onClick={() => setShowSensors(o => !o)}
-                className={`px-3 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-neon ${showSensors ? 'bg-primary border border-primary text-white' : 'bg-[var(--eu-bg-void)] border border-white/10 text-primary hover:bg-white/5'}`}>
-                Sensors ({scanParams.tests.length}) <ChevronUp size={11} className={`transition-transform ${showSensors ? 'rotate-180' : ''}`} />
-              </button>
+        {/* Scan params (always visible to allow reconfiguring for rescans) */}
+        <div className="max-w-5xl mx-auto mb-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
+              {['single', 'site'].map(s => (
+                <button key={s} onClick={() => setScanParams(p => ({ ...p, scope: s }))}
+                  className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${scanParams.scope === s ? 'bg-primary text-white shadow-neon' : 'text-[var(--eu-text-muted)] hover:text-white'}`}>
+                  {s === 'single' ? 'Single Page' : 'Full Site'}
+                </button>
+              ))}
             </div>
-            <AnimatePresence>
-              {showSensors && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                  className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-7 gap-2">
-                  {['console', 'network', 'forms', 'ui', 'lighthouse', 'accessibility', 'links'].map(test => {
-                    const labels = { console: 'Console', network: 'Network', forms: 'Forms', ui: 'UI/UX', lighthouse: 'Lighthouse', accessibility: 'A11y', links: 'Links' };
-                    const on = scanParams.tests.includes(test);
-                    return (
-                      <button key={test} onClick={() => toggleTest(test)}
-                        className={`p-2 rounded-xl transition-all border text-[8px] font-black uppercase tracking-widest flex items-center justify-between gap-1 ${on ? 'bg-primary/10 text-primary border-primary/30' : 'bg-white/5 text-[var(--eu-text-muted)] border-transparent hover:border-white/10'}`}>
-                        {labels[test]}
-                        <div className={`size-3 rounded-full border flex items-center justify-center ${on ? 'bg-primary border-primary' : 'border-slate-600'}`}>
-                          {on && <Check size={7} strokeWidth={4} />}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <button onClick={() => setShowSensors(o => !o)}
+              className={`px-3 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-neon ${showSensors ? 'bg-primary border border-primary text-white' : 'bg-[var(--eu-bg-void)] border border-white/10 text-primary hover:bg-white/5'}`}>
+              Sensors ({scanParams.tests.length}) <ChevronUp size={11} className={`transition-transform ${showSensors ? 'rotate-180' : ''}`} />
+            </button>
           </div>
-        )}
+          <AnimatePresence>
+            {showSensors && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-7 gap-2">
+                {['console', 'network', 'forms', 'ui', 'lighthouse', 'accessibility', 'links'].map(test => {
+                  const labels = { console: 'Console', network: 'Network', forms: 'Forms', ui: 'UI/UX', lighthouse: 'Lighthouse', accessibility: 'A11y', links: 'Links' };
+                  const on = scanParams.tests.includes(test);
+                  return (
+                    <button key={test} onClick={() => toggleTest(test)}
+                      className={`p-2 rounded-xl transition-all border text-[8px] font-black uppercase tracking-widest flex items-center justify-between gap-1 ${on ? 'bg-primary/10 text-primary border-primary/30' : 'bg-white/5 text-[var(--eu-text-muted)] border-transparent hover:border-white/10'}`}>
+                      {labels[test]}
+                      <div className={`size-3 rounded-full border flex items-center justify-center ${on ? 'bg-primary border-primary' : 'border-slate-600'}`}>
+                        {on && <Check size={7} strokeWidth={4} />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         <form onSubmit={handleSend} className="relative max-w-5xl mx-auto">
           <input

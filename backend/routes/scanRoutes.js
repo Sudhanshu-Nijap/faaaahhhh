@@ -292,7 +292,7 @@ async function startScan(baseUrl, userId, force = false, chaosIntensity = 'stand
     const defaultModules = ['console', 'network', 'lighthouse', 'accessibility', 'links', 'ui', 'forms'];
     let finalModules = defaultModules;
     
-    if (Array.isArray(tests) && tests.length > 0) {
+    if (Array.isArray(tests)) {
         finalModules = tests;
     } else if (typeof tests === 'string' && tests.length > 0) {
         try {
@@ -304,17 +304,24 @@ async function startScan(baseUrl, userId, force = false, chaosIntensity = 'stand
         }
     }
 
+    const previousReport = await ScanReport.findOne({
+        url: baseUrl,
+        userId,
+        status: 'completed',
+    }).sort({ createdAt: -1 });
+
     const report = new ScanReport({ 
         url: baseUrl, 
         userId, 
         status: 'in-progress',
         scannedModules: finalModules,
-        mode: mode || 'full'
+        mode: mode || 'full',
+        comparison: previousReport ? { previousReportId: previousReport._id } : undefined
     });
     await report.save();
 
     // Launch background processor
-    runFullScan(report._id, baseUrl, chaosIntensity, singlePageOnly, finalModules, scope, mode, chatId).catch(e => {
+    runFullScan(report._id, baseUrl, chaosIntensity, singlePageOnly, finalModules, scope, mode, chatId, previousReport?._id).catch(e => {
         console.error(`[Pipeline Critical Failure]: ${e.message}`);
     });
 
@@ -332,14 +339,14 @@ const withTimeout = (promise, ms, taskName) => {
 /**
  * runFullScan - Spawns a background worker thread for the pipeline.
  */
-async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = false, tests = [], scope = 'single', mode = 'specific', chatId = null) {
+async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = false, tests = [], scope = 'single', mode = 'specific', chatId = null, prevReportId = null) {
     const { Worker } = require('worker_threads');
     const path = require('path');
 
-    console.log(`[Main]: Spawning Tactical Worker for ${reportId}...`);
+    console.log(`[Main]: Spawning Tactical Worker for ${reportId} with baseline ${prevReportId}...`);
 
     const worker = new Worker(path.join(__dirname, '../workers/scanWorker.js'), {
-        workerData: { reportId: reportId.toString(), baseUrl, chaosIntensity, singlePageOnly, tests, scope, mode, chatId: chatId ? chatId.toString() : null }
+        workerData: { reportId: reportId.toString(), baseUrl, chaosIntensity, singlePageOnly, tests, scope, mode, chatId: chatId ? chatId.toString() : null, prevReportId: prevReportId?.toString() }
     });
 
     activeWorkers.set(reportId.toString(), worker);
@@ -391,6 +398,20 @@ async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = f
     });
 }
 
-// ── module.exports follows ──
+router.post('/learning/ask', async (req, res) => {
+    try {
+        const { question } = req.body;
+        if (!question || question.trim().length < 2) {
+            return res.status(400).json({ error: 'Uplink request is too sparse.' });
+        }
+        
+        const learningAgent = require('../services/learningAgent');
+        const response = await learningAgent.askDebugging(question);
+        res.json(response);
+    } catch (e) {
+        console.error('[LearningHub Error]:', e.message);
+        res.status(500).json({ error: 'Neural substrate consult failed.' });
+    }
+});
 
 module.exports = { router, runFullScan, activeWorkers };

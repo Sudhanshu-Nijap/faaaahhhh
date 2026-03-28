@@ -263,14 +263,14 @@ const ChatSidebar = ({
             {pinned.length > 0 && (
               <div className="mb-3">
                 <SectionLabel label="Pinned" />
-                {pinned.map(c => <ChatItem key={c._id} chat={c} />)}
+                {pinned.map(c => <ChatItem key={`pinned-${c._id}`} chat={c} />)}
               </div>
             )}
             {/* Date Groups */}
             {dateGroups.map(({ label, items }) => (
-              <div key={label} className="mb-3">
+              <div key={`group-${label}`} className="mb-3">
                 <SectionLabel label={label} />
-                {items.map(c => <ChatItem key={c._id} chat={c} />)}
+                {items.map(c => <ChatItem key={`chat-${label}-${c._id}`} chat={c} />)}
               </div>
             ))}
           </div>

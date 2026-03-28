@@ -27,6 +27,7 @@ const messageSchema = new mongoose.Schema({
             networkIssues: Number
         },
         comparison: {
+            previousReportId: mongoose.Schema.Types.ObjectId,
             scoreDelta: Number,
             newErrors: Number,
             fixedErrors: Number,

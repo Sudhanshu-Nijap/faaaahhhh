@@ -10,7 +10,7 @@ const ScoreRing = ({ score, size = 48 }) => {
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size/2} cy={size/2} r={radius} fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="4" />
+        <circle cx={size/2} cy={size/2} r={radius} fill="transparent" className="stroke-[var(--eu-text-main)] opacity-10" strokeWidth="4" />
         <circle cx={size/2} cy={size/2} r={radius} fill="transparent" stroke={color} strokeWidth="4"
           strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round"
           style={{ transition: 'stroke-dashoffset 1s ease' }} />

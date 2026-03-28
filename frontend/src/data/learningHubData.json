@@ -1,0 +1,92 @@
+[
+  {
+    "id": 1,
+    "category": "Debugging Basics",
+    "title": "What is Debugging?",
+    "description": "Debugging is the systematic process of identifying, analyzing, and resolving bugs or defects in software to ensure it functions as intended.",
+    "example": "// Example: Using console.log to trace value flow\nfunction add(a, b) {\n    console.log('Calculating:', a, '+', b);\n    return a + b;\n}",
+    "solution": "1. Isolate the faulty code.\n2. Reproduce the bug.\n3. Analyze state using logs or debuggers.\n4. Fix and verify.",
+    "tip": "Always tackle one bug at a time to avoid complex side effects."
+  },
+  {
+    "id": 2,
+    "category": "Common Errors",
+    "title": "Undefined is not a function",
+    "description": "This occurs when you attempt to call a value as a function, but that value is undefined. Usually due to missing imports or scope issues.",
+    "example": "// Error: obj.calculate is undefined\nconst obj = {};\nobj.calculate();",
+    "solution": "Check if the function exists before calling it or ensure it's properly assigned.",
+    "tip": "Use optional chaining: obj.calculate?.() to prevent crashes."
+  },
+  {
+    "id": 3,
+    "category": "API Error",
+    "title": "404 Not Found vs 500 Server Error",
+    "description": "404 means the endpoint doesn't exist (client error). 500 means the server crashed while processing the request (backend error).",
+    "example": "// Requesting a missing endpoint\naxios.get('/api/missing-route');",
+    "solution": "For 404: Check URL spelling. For 500: Check backend logs and database connectivity.",
+    "tip": "Always implement global error boundaries in your API services."
+  },
+  {
+    "id": 4,
+    "category": "CSS Bug",
+    "title": "The Overflow Nightmare",
+    "description": "Content leaking out of its container usually happens when fixed widths are used or flexbox properties aren't constrained.",
+    "example": ".container {\n  width: 100px;\n}\n.content {\n  width: 200px;\n}",
+    "solution": "Use overflow: hidden or max-width: 100% to contain child elements.",
+    "tip": "Use 'overflow-x: hidden' on the body tag as a safety net for mobile layouts."
+  },
+  {
+    "id": 5,
+    "category": "Async/Await Mistakes",
+    "title": "The Missing 'await' Trap",
+    "description": "Forgetting 'await' before a promise returns the Promise object instead of the resolved data, leading to unexpected 'Promise <pending>' values.",
+    "example": "const data = fetchUser();\nconsole.log(data); // [object Promise]",
+    "solution": "Always use await: const data = await fetchUser();",
+    "tip": "Use try/catch blocks with async functions to handle rejected promises gracefully."
+  },
+  {
+    "id": 6,
+    "category": "Testing Fundamentals",
+    "title": "Unit Testing 101",
+    "description": "Unit tests focus on testing individual components or functions in isolation from the rest of the app.",
+    "example": "test('adds 1 + 2 to equal 3', () => {\n  expect(sum(1, 2)).toBe(3);\n});",
+    "solution": "Write tests that cover edge cases, not just the happy path.",
+    "tip": "Good tests should be independent, fast, and repeatable."
+  },
+  {
+    "id": 7,
+    "category": "Pro Debugging Tips",
+    "title": "Chrome DevTools: Network Tab",
+    "description": "The Network tab is your eyes into the communication between your app and the server.",
+    "example": "// Filter by 'Fetch/XHR' to see API calls",
+    "solution": "Inspect headers, payloads, and response status codes to find API bottlenecks.",
+    "tip": "Use 'Throttling' to simulate slow 3G connections and test loading states."
+  },
+  {
+    "id": 8,
+    "category": "Best Practices",
+    "title": "Rubber Duck Debugging",
+    "description": "Explain your problem out loud to an inanimate object. Translating the problem into words often exposes the logical flaw in your approach.",
+    "example": "// Explain this logic out loud:\nif (isValid == false && user === null) {\n  // Oh wait, user shouldn't be null here!\n}",
+    "solution": "1. Step away from typing.\n2. Explain the code line-by-line.\n3. Notice the incorrect assumptions.",
+    "tip": "Writing the problem down in a notebook has a similar cognitive effect."
+  },
+  {
+    "id": 9,
+    "category": "Best Practices",
+    "title": "Isolate the Bug",
+    "description": "Remove layers of complexity. Create a minimal reproducible example (MRE). If the bug disappears, the issue is in the removed code.",
+    "example": "// Instead of testing the whole UI form\ntest('validateEmail()', () => {\n  expect(validateEmail('test@')).toBe(false);\n});",
+    "solution": "1. Comment out unrelated code.\n2. Hardcode variables to bypass external factors.\n3. Test the broken logic in isolation.",
+    "tip": "Codepen or CodeSandbox are great for building minimal reproducible examples."
+  },
+  {
+    "id": 10,
+    "category": "Best Practices",
+    "title": "Use Version Control (Git Bisect)",
+    "description": "If a bug suddenly appears, use git bisect to find the exact commit that introduced the problem by performing a binary search on the history.",
+    "example": "$ git bisect start\n$ git bisect bad HEAD\n$ git bisect good v1.2.0\n# Git checks out a midpoint for you to test.",
+    "solution": "1. Find a known good state.\n2. Narrow down the offending commit.\n3. Review the diff to understand what broke.",
+    "tip": "Keep commits small and focused so identifying the root cause is easier."
+  }
+]

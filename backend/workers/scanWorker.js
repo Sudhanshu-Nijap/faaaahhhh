@@ -21,10 +21,11 @@ mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('[Worker]: Connected to Tactical Database'))
     .catch(err => console.error('[Worker]: DB Error:', err));
 
-// 4. Utility: Calculate Health
 const calculateReportHealth = (report) => {
     if (!report) return 0;
-    const weights = { network: 0.5, links: 10, console: 2, ui: 5, accessibility: 15 };
+    
+    // Softer base weights for an exponential deduction curve
+    const weights = { network: 0.5, links: 8, console: 2, ui: 3, accessibility: 3 };
     const counts = {
         network: report.networkLogs?.length || 0,
         links: report.brokenLinks?.length || 0,
@@ -32,8 +33,13 @@ const calculateReportHealth = (report) => {
         ui: (report.uiIssues?.length || 0) + (report.responsiveIssues?.length || 0),
         accessibility: report.accessibilityIssues?.length || 0
     };
-    const deductions = Object.keys(weights).reduce((acc, key) => acc + (counts[key] * weights[key]), 0);
-    return Math.max(0, Math.round(100 - deductions));
+    
+    const rawDeduction = Object.keys(weights).reduce((acc, key) => acc + (counts[key] * weights[key]), 0);
+    
+    // Exponential decay curve: makes sure early errors hurt, but prevents immediate drops to 0
+    const scaledScore = 100 * Math.exp(-rawDeduction / 75);
+    
+    return Math.max(0, Math.round(scaledScore));
 };
 
 // 5. Orchestration Pipeline
@@ -125,22 +131,21 @@ async function runMasterOrchestrator(data) {
 
         // --- STAGE 3: AI Synthesis (qaAgent) ---
         emitProgress(90, 'Running Final AI Analysis...');
-        await qaAgent.runAgent(reportId);
+        const { prevReportId } = data;
+        await qaAgent.runAgent(reportId, prevReportId);
 
         // --- STAGE 4: Delta Comparison ---
         emitProgress(95, 'Calculating Performance Delta...');
         const currentReport = await ScanReport.findById(reportId);
-        const previousReport = await ScanReport.findOne({
-            url: baseUrl,
-            userId: currentReport.userId,
-            status: 'completed',
-            _id: { $ne: reportId }
-        }).sort({ createdAt: -1 });
+        const previousReport = prevReportId ? await ScanReport.findById(prevReportId) : null;
+
+        // Calculate health score first so comparison service can use it
+        const healthScore = calculateReportHealth(currentReport);
+        currentReport.healthScore = healthScore; 
 
         const comparison = await comparisonService.calculateDelta(currentReport, previousReport);
 
         // Finalize Report
-        const healthScore = calculateReportHealth(currentReport);
         const finalReport = await ScanReport.findByIdAndUpdate(reportId, { 
             status: 'completed', 
             healthScore,
@@ -162,6 +167,7 @@ async function runMasterOrchestrator(data) {
                     networkIssues: finalReport?.networkLogs?.length || 0
                 },
                 comparison: comparison?.previousReportId ? {
+                    previousReportId: comparison.previousReportId,
                     scoreDelta: comparison.scoreDelta,
                     newErrors: comparison.stats.newErrors,
                     fixedErrors: comparison.stats.fixedErrors,

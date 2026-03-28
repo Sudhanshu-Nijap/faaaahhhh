@@ -237,8 +237,8 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
 
 
         // Aggressively append all detected telemetry to the report
-        if (rawConsole.length > 0) finalUpdate.$push.consoleErrors = { $each: rawConsole };
-        if (rawNetwork.length > 0) finalUpdate.$push.networkLogs = { $each: rawNetwork };
+        if (scannedModules.includes('console') && rawConsole.length > 0) finalUpdate.$push.consoleErrors = { $each: rawConsole };
+        if (scannedModules.includes('network') && rawNetwork.length > 0) finalUpdate.$push.networkLogs = { $each: rawNetwork };
         if (uiIssues.length > 0) finalUpdate.$push.uiIssues = { $each: uiIssues.map(u => ({ ...u, page: url })) };
         if (brokenLinks.length > 0) finalUpdate.$push.brokenLinks = { $each: brokenLinks };
         if (formIssues.length > 0) {

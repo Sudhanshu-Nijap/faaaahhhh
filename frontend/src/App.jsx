@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldCheck, Shield, Bug, Activity, Command, Github as GitHubIcon, Twitter, Cpu, Layout, Terminal, Lock, Zap, MousePointer2, Skull, X } from 'lucide-react';
+import { ShieldCheck, Shield, Bug, Activity, Command, Github as GitHubIcon, Twitter, Cpu, Layout, Terminal, Lock, Zap, MousePointer2, Skull, X, Brain } from 'lucide-react';
 import axios from 'axios';
 
 import ScanForm from './components/ScanForm';
@@ -19,6 +19,8 @@ import ChatSidebar from './components/ChatSidebar';
 import ChatInterface from './components/ChatInterface';
 import LoadingScreen from './components/LoadingScreen';
 import Footer from './components/Footer';
+import LearningHubPage from './components/LearningHub/LearningHubPage';
+import FloatingAIWidget from './components/FloatingAIWidget';
 
 function App() {
   const [activeReportId, setActiveReportId] = useState(() => localStorage.getItem('sentinel_active_report') || null);
@@ -44,6 +46,7 @@ function App() {
   const [reports, setReports] = useState([]);
   const [pendingChatMessage, setPendingChatMessage] = useState(null); // NEW: Queue for manual AI queries
   const [chatKey, setChatKey] = useState(0); // NEW: Forcing ChatInterface reset
+  const [showLearningHub, setShowLearningHub] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -327,6 +330,21 @@ function App() {
           <div className="flex-1" />
 
           <div className="flex items-center gap-4">
+            {isLoggedIn && (
+              <button
+                onClick={() => {
+                  setShowLearningHub(true);
+                  setViewingReportId(null);
+                  setShowReportList(false);
+                  setShowGlobalStats(false);
+                }}
+                className={`p-3 bg-[var(--eu-bg-void)]/60 hover:bg-eu-accent/10 rounded-2xl transition-all border border-[var(--eu-glass-border)] text-primary hover:text-eu-accent hover:border-eu-accent/30 shadow-sm ${showLearningHub ? 'bg-eu-accent/10 border-eu-accent/30 text-eu-accent shadow-neon' : ''}`}
+                title="Cognitive Learning Hub"
+              >
+                <Brain size={16} fill={showLearningHub ? "currentColor" : "none"} className={showLearningHub ? "animate-pulse" : ""} />
+              </button>
+            )}
+
             <button
               onClick={toggleTheme}
               className="p-3 bg-[var(--eu-bg-void)]/60 hover:bg-[var(--eu-bg-void)]/80 rounded-2xl transition-all border border-[var(--eu-glass-border)] text-primary"
@@ -438,12 +456,14 @@ function App() {
                     setShowReportList(false);
                     setShowGlobalStats(false);
                     setIsSidebarOpen(false);
+                    setShowLearningHub(false);
                   }}
                   onViewReport={(id) => {
                     setViewingReportId(id);
                     setShowReportList(false);
                     setShowGlobalStats(false);
                     setIsSidebarOpen(false);
+                    setShowLearningHub(false);
                   }}
                   activeChatId={activeChatId}
                   onNewSession={() => {
@@ -452,6 +472,7 @@ function App() {
                     setShowReportList(false);
                     setShowGlobalStats(false);
                     setIsSidebarOpen(false);
+                    setShowLearningHub(false);
                   }}
                   refreshKey={refreshKey}
                   onToggleTheme={toggleTheme}
@@ -461,6 +482,7 @@ function App() {
                     setShowGlobalStats(true);
                     setViewingReportId(null);
                     setIsSidebarOpen(false);
+                    setShowLearningHub(false);
                   }}
                   onDeleteChat={(id) => {
                     if (activeChatId === id) {
@@ -481,7 +503,27 @@ function App() {
 
               <div className="flex-1 h-full relative p-4 md:p-6 overflow-hidden">
                 <AnimatePresence mode="wait">
-                  {viewingReportId ? (
+                  {showLearningHub ? (
+                    <motion.div
+                      key="learning-hub-view"
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 1.05 }}
+                      className="h-full flex flex-col"
+                    >
+                      <div className="mb-8 flex-none">
+                        <button
+                          onClick={() => setShowLearningHub(false)}
+                          className="px-6 py-2 bg-[var(--eu-bg-void)]/60 hover:bg-[var(--eu-bg-void)]/80 border border-[var(--eu-glass-border)] rounded-xl text-[10px] font-black uppercase tracking-widest text-eu-accent transition-all"
+                        >
+                          ← Exit Learning Protocol
+                        </button>
+                      </div>
+                      <div className="flex-1 min-h-0">
+                        <LearningHubPage />
+                      </div>
+                    </motion.div>
+                  ) : viewingReportId ? (
                     <motion.div
                       key="report-view"
                       initial={{ opacity: 0, x: 20 }}
@@ -744,6 +786,7 @@ function App() {
           />
         )}
       </AnimatePresence>
+      {isLoggedIn && showLearningHub && <FloatingAIWidget />}
     </div>
   );
 }

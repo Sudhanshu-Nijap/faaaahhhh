@@ -21,9 +21,23 @@ class QAAgent {
         this.modelName = process.env.GROQ_QA_MODEL || 'llama-3.3-70b-versatile';
     }
 
-    async analyzeResults(currentReport) {
+    async analyzeResults(currentReport, previousReport = null) {
+        let comparisonNotice = "";
+        if (previousReport) {
+            comparisonNotice = `
+            BASELINE COMPARISON (AGAINST PREVIOUS SCAN):
+            - Previous Health Score: ${previousReport.healthScore || 0}
+            - Previous Broken Links: ${previousReport.brokenLinks?.length || 0}
+            - Previous Console Errors: ${previousReport.consoleErrors?.length || 0}
+            - Previous Lighthouse Performance: ${previousReport.lighthouseScores?.performance || 0}
+            
+            Compare the current numbers with these baseline metrics. Highlight if things got better or worse in the summary.
+            `;
+        }
+
         const prompt = `
             Analyze website diagnostic data for: ${currentReport.url}
+            ${comparisonNotice}
             
             AUDIT DATA:
             - CONSOLE ERRORS: ${JSON.stringify(currentReport.consoleErrors || [])}
@@ -33,13 +47,17 @@ class QAAgent {
             - FORM DIAGNOSTICS: ${JSON.stringify(currentReport.formIssues || [])}
             
             TASK: 
-            Provide a technical classification (e.g., PERFORMANCE_CRITICAL, ACCESSIBILITY_FAILED, HYGIENE_STABLE), 
-            a concise high-level summary, and a list of the top 3 most urgent issues.
+            Provide a technical classification (e.g., PERFORMANCE_CRITICAL, ACCESSIBILITY_FAILED, HYGIENE_STABLE).
+            
+            IMPORTANT: Generate a concise high-level summary. 
+            If baseline data was provided above, you MUST explicitly mention the comparison in the summary (e.g., "Health improved by X points" or "Regressed since last scan due to Y new errors").
+            
+            List the top 3 most urgent issues.
             
             OUTPUT FORMAT (STRICT JSON ONLY):
             {
               "classification": "STATUS",
-              "summary": "1-2 sentence executive overview",
+              "summary": "1-2 sentence executive overview with comparison highlights",
               "issues": [
                 { 
                   "title": "Short UI friendly title",
@@ -123,11 +141,17 @@ class QAAgent {
     }
 }
 
-const runAgent = async (reportId) => {
+const runAgent = async (reportId, prevReportId = null) => {
     const report = await ScanReport.findById(reportId);
     if (!report) return;
+    
+    let previousReport = null;
+    if (prevReportId) {
+        previousReport = await ScanReport.findById(prevReportId);
+    }
+
     const agent = new QAAgent(reportId);
-    await agent.analyzeResults(report);
+    await agent.analyzeResults(report, previousReport);
 };
 
 module.exports = { runAgent };

@@ -37,8 +37,10 @@ const RecommendationCard = ({ title, status, icon, description, statusColor }) =
   </div>
 );
 
-const LighthouseCircle = ({ label, score }) => {
+const LighthouseCircle = ({ label, score, delta }) => {
   const getScoreColor = (s) => {
+    if (s >= 90) return 'text-green-500 stroke-green-500';
+    if (s >= 50) return 'text-yellow-500 stroke-yellow-500';
     return 'text-primary stroke-primary';
   };
   const radius = 32;
@@ -62,6 +64,15 @@ const LighthouseCircle = ({ label, score }) => {
       <div className="text-center">
         <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--eu-text-main)] opacity-40 group-hover:opacity-100 transition-opacity">{label}</span>
       </div>
+      {/* Comparison Delta */}
+      {delta !== undefined && delta !== 0 && (
+        <div className={`mt-2 flex items-center justify-center gap-1 font-black text-[10px] uppercase shadow-neon-soft px-3 py-1 rounded-lg border ${
+          delta > 0 ? 'text-green-500 border-green-500/20 bg-green-500/5' : 'text-primary border-primary/20 bg-primary/5'
+        }`}>
+          {delta > 0 ? <Plus size={10} strokeWidth={4} /> : <div className="w-2 h-[2px] bg-primary rounded-full shrink-0" />}
+          {Math.abs(Math.round(delta))}
+        </div>
+      )}
     </div>
   );
 };
@@ -558,6 +569,43 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
                           <div className="px-3 py-1.5 bg-eu-accent text-[10px] font-black uppercase tracking-[0.3em] rounded-xl shadow-neon text-white font-outfit">Cognitive Report</div>
                           <div className="px-3 py-1.5 bg-white/5 border border-white/5 text-[10px] font-black uppercase tracking-[0.3em] rounded-xl text-slate-500 font-outfit">{report.url}</div>
                         </div>
+                        {report.comparison && report.comparison.previousReportId && (
+                          <div className="flex flex-wrap items-center gap-3 mb-6">
+                            <div className="px-4 py-2 bg-eu-accent/10 border border-eu-accent/30 rounded-2xl flex items-center gap-3 shadow-neon">
+                              <Activity size={14} className="text-eu-accent" />
+                              <div className="flex flex-col">
+                                <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Neural Progression</span>
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-sm font-black uppercase ${report.comparison.scoreDelta >= 0 ? 'text-green-500' : 'text-primary'}`}>
+                                    {report.comparison.scoreDelta >= 0 ? '+' : ''}{report.comparison.scoreDelta} HP
+                                  </span>
+                                  <span className="text-[10px] font-bold text-slate-400 opacity-60 italic">vs. Baseline Matrix</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {report.comparison.stats && (
+                              <div className="flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-2xl">
+                                <div className="flex flex-col border-r border-white/10 pr-4">
+                                  <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Neutralized</span>
+                                  <span className="text-sm font-black text-green-500">{report.comparison.stats.fixedErrors}</span>
+                                </div>
+                                <div className="flex flex-col pl-1">
+                                  <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Invasive</span>
+                                  <span className="text-sm font-black text-primary">{report.comparison.stats.newErrors}</span>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className={`px-4 py-2 rounded-2xl border flex items-center gap-2 ${
+                              report.comparison.stats?.impact === 'Improved' ? 'bg-green-500/10 border-green-500/30 text-green-500 shadow-neon' :
+                              report.comparison.stats?.impact === 'Regressed' ? 'bg-primary/10 border-primary/30 text-primary shadow-neon' :
+                              'bg-white/5 border-white/10 text-slate-500'
+                            }`}>
+                              <p className="text-[10px] font-black uppercase tracking-widest">{report.comparison.stats?.impact || 'Stable State'}</p>
+                            </div>
+                          </div>
+                        )}
                         <h3 className="text-2xl md:text-4xl font-black uppercase tracking-tight text-[var(--eu-text-main)] leading-[1.1] font-outfit">
                           {report.status === 'completed' ? 'Analysis Completed' : report.status === 'in-progress' ? 'Analysis in Progress' : report.aiInsights?.classification || 'Neutral State Detected'}
                         </h3>
@@ -689,10 +737,10 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
                       <p className="text-slate-500 text-sm font-medium leading-relaxed">Chrome DevTools diagnostic scores synchronized via automated crawl protocols.</p>
                     </div>
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-12 md:gap-20">
-                      <LighthouseCircle label="Performance" score={report.lighthouseScores.performance} />
-                      <LighthouseCircle label="Neural SEO" score={report.lighthouseScores.seo} />
-                      <LighthouseCircle label="Protocols" score={report.lighthouseScores.bestPractices} />
-                      <LighthouseCircle label="Inclusion" score={report.lighthouseScores.accessibility} />
+                      <LighthouseCircle label="Performance" score={report.lighthouseScores.performance} delta={report.comparison?.lighthouseDelta?.performance} />
+                      <LighthouseCircle label="Neural SEO" score={report.lighthouseScores.seo} delta={report.comparison?.lighthouseDelta?.seo} />
+                      <LighthouseCircle label="Protocols" score={report.lighthouseScores.bestPractices} delta={report.comparison?.lighthouseDelta?.bestPractices} />
+                      <LighthouseCircle label="Inclusion" score={report.lighthouseScores.accessibility} delta={report.comparison?.lighthouseDelta?.accessibility} />
                     </div>
                   </div>
                 </div>
