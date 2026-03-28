@@ -115,8 +115,10 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
             '--disable-default-apps',
             '--disable-extensions',
             '--disable-sync',
-            '--disable-gpu', // Added from snippet
-            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' // Added from snippet
+            '--disable-gpu',
+            '--no-first-run',
+            '--disable-notifications',
+            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         ]
     });
 
@@ -162,24 +164,18 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
             } catch (_) {}
         });
         
-        emitProgress(30, `Targeting ${url}...`);
-        const startTime = Date.now();
-        
         // --- High-Resiliency Navigation Cycle ---
+        const startTime = Date.now();
         try {
-            await page.goto(url, { waitUntil: 'load', timeout: 45000 });
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
         } catch (navError) {
-            console.warn(`[scanEngine]: Initial goto failed for ${url}: ${navError.message}. Retrying with permissive fallback...`);
-            // Strategic Retry: Use 'domcontentloaded' which is more resilient to slow assets/trackers
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(e => {
-                console.error(`[scanEngine]: Neural Navigation FAIL for ${url}: ${e.message}`);
-                // Proceed anyway, as Lighthouse might still manage to audit the page
-            });
+            console.warn(`[scanEngine]: Neural Navigation slow for ${url}: ${navError.message}`);
         }
-
         const loadTime = Date.now() - startTime;
-        // Wait for potential dynamic content to settle
-        await page.waitForTimeout(2000); 
+        
+        // --- 2b. Converged Telemetry Capture ---
+        // Wait for potential dynamic content to settle but much faster
+        await page.waitForTimeout(500); 
 
         // 2c. Interaction Audit: Forms
         let formIssues = [];
@@ -192,9 +188,8 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
         const screenshotPath = path.join(__dirname, '../screenshots', screenshotName);
         
         emitProgress(50, 'Capturing visual states & UI patterns...');
-        await page.screenshot({ path: screenshotPath, fullPage: true }).catch(async () => {
-            await page.screenshot({ path: screenshotPath, fullPage: false });
-        });
+        // Optimization: Use standard viewport screenshot for speed (skip stitching)
+        await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
 
         const uiIssues = scannedModules.includes('ui') ? await scanUI(page).catch(() => []) : [];
         
@@ -205,15 +200,22 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
                 Array.from(document.querySelectorAll('a[href]'))
                     .map(a => a.href)
                     .filter(href => href.startsWith('http'))
+                    .slice(0, 5) // Reduced for extreme speed
             );
-            for (const link of links.slice(0, 10)) {
+            
+            // Parallelize link checks with Promise.all for speed
+            await Promise.all(links.map(async (link) => {
                 try {
-                    const res = await axios.head(link, { timeout: 3000, validateStatus: () => true }).catch(() => null);
+                    const res = await axios.head(link, { 
+                        timeout: 1500, // Even more aggressive
+                        validateStatus: () => true,
+                        headers: { 'User-Agent': 'Sentinel-Turbo-Bot/1.0' }
+                    }).catch(() => null);
                     if (!res || res.status >= 400) {
                         brokenLinks.push({ page: url, link, status: res ? res.status : 0, recommendation: 'Update or remove broken link.' });
                     }
                 } catch (_) {}
-            }
+            }));
         }
 
 
@@ -250,7 +252,7 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
         // --- RELAY STEP: Purge Browser before Dedicated Fallback ---
         console.log(`[scanEngine]: Yielding browser session for ${url}...`);
         try {
-            await withTimeout(browser.close(), 10000, 'Browser Close');
+            await withTimeout(browser.close(), 2000, 'Browser Close');
         } catch (closeError) {
             console.warn(`[scanEngine]: Browser close timed out/failed: ${closeError.message}`);
         }
@@ -277,14 +279,17 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
  */
 const runTargetedCrawlScan = async (reportId, url, tests, emitProgress) => {
     console.log(`[scanEngine]: Initiating Converged Site Crawl: ${url}`);
+    
+    // 1. Universal Discovery Phase
     const pages = await crawler.crawlWebsite(reportId, url, emitProgress, { maxPages: 3, maxDepth: 0 });
     
-    for (const targetUrl of pages) {
-        // Reuse the single page logic for each target to ensure consistency
-        await runSinglePageScan(reportId, targetUrl, tests, emitProgress).catch(err => {
+    // 2. Parallel Diagnostic Surge
+    // Use Promise.all to scan all discovered pages concurrently for extreme speed
+    await Promise.all(pages.map(targetUrl => 
+        runSinglePageScan(reportId, targetUrl, tests, emitProgress).catch(err => {
             console.error(`[scanEngine]: Targeted page scan failed for ${targetUrl}: ${err.message}`);
-        });
-    }
+        })
+    ));
 };
 
 /**

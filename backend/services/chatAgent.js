@@ -34,7 +34,16 @@ class ChatAgent {
         const message = lastUserMsg.content;
         const msg = message.toLowerCase();
 
-        // --- LAYER 0: Knowledge Base (Type A+ - Advanced RAG / Pure Deterministic) ---
+        // --- LAYER 0: Rule Engine (Type A - Deterministic Counts) ---
+        if (msg.includes("how many") || msg.includes("count") || msg.includes("total") || msg.includes("list all")) {
+            if (msg.includes("broken link") || msg.includes("dead link")) return `There are exactly **${reportData.brokenLinks?.length || 0}** broken links in this scan.`;
+            if (msg.includes("security issue") || msg.includes("vulnerability") || msg.includes("security")) return `There are **${reportData.securityIssues?.length || 0}** security vulnerabilities detected.`;
+            if (msg.includes("accessibility")) return `I found **${reportData.accessibilityIssues?.length || 0}** accessibility violations.`;
+            if (msg.includes("ui") || msg.includes("ux") || msg.includes("layout")) return `The UI analysis detected **${(reportData.uiIssues?.length || 0) + (reportData.responsiveIssues?.length || 0)}** design inconsistencies.`;
+            if (msg.includes("console") || msg.includes("error")) return `I detected **${reportData.consoleErrors?.length || 0}** active console errors in this scan.`;
+        }
+
+        // --- LAYER 1: Knowledge Base (Type A+ - Advanced RAG / Pure Deterministic) ---
         if (Array.isArray(this.knowledgeBase)) {
             // Fuzzy/Scored Match logic
             const matches = this.knowledgeBase.map(kb => {
@@ -50,17 +59,11 @@ class ChatAgent {
             
             // If we have a high-confidence match (score >= 50) or they asked for a fix
             if (entry && (msg.includes("fix") || msg.includes("how") || msg.includes("help") || matches[0].score >= 50)) {
+                // If the user is asking for a count and a fix, the count already matched Layer 0.
+                // If they just asked for a fix, this matches.
                 const fixList = Array.isArray(entry.fix) ? entry.fix.map(f => `- ${f}`).join('\n') : entry.fix;
                 return `### Genuine Fix: ${entry.issue}\n\n**Reason:** ${entry.reason}\n\n**Recommendation:**\n${fixList}\n\n**Remediation Code:**\n\`\`\`javascript\n${entry.remediationCode}\n\`\`\``;
             }
-        }
-
-        // --- LAYER 1: Rule Engine (Type A - Deterministic Counts) ---
-        if (msg.includes("how many") || msg.includes("count") || msg.includes("list all")) {
-            if (msg.includes("broken link") || msg.includes("dead link")) return `There are exactly **${reportData.brokenLinks?.length || 0}** broken links in this scan.`;
-            if (msg.includes("security issue") || msg.includes("vulnerability")) return `There are **${reportData.securityIssues?.length || 0}** security vulnerabilities detected.`;
-            if (msg.includes("accessibility")) return `I found **${reportData.accessibilityIssues?.length || 0}** accessibility violations.`;
-            if (msg.includes("ui") || msg.includes("ux")) return `The UI analysis detected **${(reportData.uiIssues?.length || 0) + (reportData.responsiveIssues?.length || 0)}** design inconsistencies.`;
         }
 
         // --- LAYER 2: Filter Layer (Type B/C - Grounded RAG Extraction) ---

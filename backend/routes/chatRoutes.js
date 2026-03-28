@@ -1,107 +1,214 @@
 const express = require('express');
 const router = express.Router();
-const chatAgent = require('../services/chatAgent');
-const scanRoutes = require('./scanRoutes'); // To reuse runFullScan
+const Chat = require('../models/Chat');
+const Message = require('../models/Message');
 const ScanReport = require('../models/ScanReport');
+const chatAgent = require('../services/chatAgent');
 
-// NEW: Conversational Q&A route with Memory
-router.post('/', async (req, res) => {
-    const { message, reportId } = req.body;
-    if (!message || !reportId) {
-        return res.status(400).json({ error: "Message and reportId required" });
-    }
+// ── Find or create chat thread for a URL ──────────────────────────────────────
+router.post('/thread/start', async (req, res) => {
+    const { url, userId } = req.body;
+    if (!url || !userId) return res.status(400).json({ error: 'url and userId required' });
 
     try {
-        const report = await ScanReport.findById(reportId);
-        if (!report) {
-            return res.status(404).json({ error: "Report not found" });
+        let chat = await Chat.findOne({ url, userId });
+        const isNew = !chat;
+
+        if (!chat) {
+            chat = await Chat.create({ url, userId });
         }
 
-        // 1. Save user message to history
-        const userMsg = {
-            role: 'user',
-            content: message,
-            timestamp: new Date().toLocaleTimeString()
-        };
-        report.chatHistory.push(userMsg);
-        
-        // 2. Pass the entire updated history (sliding window) to the agent
-        const slidingWindow = report.chatHistory.slice(-6);
-        const answer = await chatAgent.analyzeReportQuestion(slidingWindow, report);
-
-        // 3. Save AI reply to history
-        const aiMsg = {
-            role: 'ai',
-            content: answer,
-            timestamp: new Date().toLocaleTimeString()
-        };
-        report.chatHistory.push(aiMsg);
-        await report.save();
-
-        res.json({ reply: answer });
-    } catch (error) {
-        console.error("[Chat API Error]:", error.message);
-        res.status(500).json({ error: "Failed to process chat message." });
+        res.json({ chatId: chat._id, isNew });
+    } catch (err) {
+        console.error('[ChatThread]: Start error:', err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 
-router.post('/command', async (req, res) => {
-    const { message, userId, contextUrl, reportId } = req.body;
-
-    if (!message) return res.status(400).json({ error: 'Message is required' });
-    if (!userId) return res.status(400).json({ error: 'User ID is required' });
+// ── List all chat threads for a user (sidebar) ────────────────────────────────
+router.get('/threads', async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
 
     try {
-        // Priority 1: Check for explicit RE-SCAN / RE-TEST intent
-        if (message.toUpperCase().includes('RE-SCAN') || message.toUpperCase().includes('RE-TEST')) {
-            const urlToScan = contextUrl || (reportId ? (await ScanReport.findById(reportId))?.url : null);
-            if (urlToScan) {
-                const report = new ScanReport({ url: urlToScan, userId, status: 'in-progress' });
-                await report.save();
-                scanRoutes.runFullScan(report._id, urlToScan);
-                return res.json({
-                    response: `RE-TEST INITIATED\n\nTarget: ${urlToScan}\nBypassing cache for fresh diagnostic signatures.`,
-                    reportId: report._id,
-                    analysis: { intent: 'RE_SCAN', url: urlToScan }
-                });
-            }
-        }
+        const chats = await Chat.find({ userId }).sort({ isPinned: -1, lastMessageAt: -1 });
 
-        // Default intent-based parsing for NEW scans
-        const analysis = await chatAgent.parseCommand(message, contextUrl);
-
-        if (analysis.needsMoreInfo || !analysis.url) {
-            return res.json({
-                response: analysis.followUpQuestion || analysis.reasoning,
-                analysis
+        // For each chat, get the last message preview and scan count
+        const enriched = await Promise.all(chats.map(async (chat) => {
+            const lastMsg = await Message.findOne({ chatId: chat._id })
+                .sort({ createdAt: -1 }).lean();
+            const scanCount = await Message.countDocuments({ 
+                chatId: chat._id, 
+                type: { $in: ['report', 'rescan'] } 
             });
+            return {
+                ...chat.toObject(),
+                lastMessage: lastMsg ? { type: lastMsg.type, content: lastMsg.content, createdAt: lastMsg.createdAt } : null,
+                scanCount
+            };
+        }));
+
+        res.json(enriched);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── Get all messages in a thread ──────────────────────────────────────────────
+router.get('/thread/:chatId/messages', async (req, res) => {
+    try {
+        const messages = await Message.find({ chatId: req.params.chatId })
+            .sort({ createdAt: 1 }).lean();
+        res.json(messages);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── Get all scan reports for a URL (Previous Scans dropdown) ─────────────────
+router.get('/thread/:chatId/scans', async (req, res) => {
+    try {
+        const messages = await Message.find({ 
+            chatId: req.params.chatId,
+            type: { $in: ['report', 'rescan'] }
+        }).sort({ createdAt: -1 }).lean();
+        res.json(messages);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── Post a user message to thread ────────────────────────────────────────────
+router.post('/thread/:chatId/message', async (req, res) => {
+    const { type, content, scanReportId, reportSummary } = req.body;
+    try {
+        const msg = await Message.create({
+            chatId: req.params.chatId,
+            type: type || 'user',
+            content: content || '',
+            scanReportId,
+            reportSummary
+        });
+
+        // Update thread's lastMessageAt
+        await Chat.findByIdAndUpdate(req.params.chatId, { lastMessageAt: new Date() });
+
+        if (global.io) {
+            global.io.to(req.params.chatId).emit('new-message', msg);
         }
 
-        // If intent is valid and URL is present, trigger the scan
-        const report = new ScanReport({
-            url: analysis.url,
-            userId,
-            status: 'in-progress',
-            aiInsights: {
-                summary: analysis.reasoning,
-                keyFindings: analysis.testCases,
-                classification: `Tactical Recon: ${analysis.intent}`
+        res.json(msg);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── AI Q&A about a specific scan report ──────────────────────────────────────
+router.post('/thread/:chatId/ask', async (req, res) => {
+    const { message, scanReportId } = req.body;
+    if (!message) return res.status(400).json({ error: 'message is required' });
+
+    try {
+        let report = null;
+
+        // Try provided scanReportId first
+        if (scanReportId) {
+            report = await ScanReport.findById(scanReportId);
+        }
+
+        // Fallback: find the latest report message in this thread
+        if (!report) {
+            const latestReportMsg = await Message.findOne({
+                chatId: req.params.chatId,
+                type: { $in: ['report', 'rescan'] },
+                scanReportId: { $exists: true, $ne: null }
+            }).sort({ createdAt: -1 });
+
+            if (latestReportMsg?.scanReportId) {
+                report = await ScanReport.findById(latestReportMsg.scanReportId);
             }
-        });
-        await report.save();
+        }
 
-        // Trigger the scan pipeline
-        scanRoutes.runFullScan(report._id, analysis.url);
+        // Fallback: find by chat URL from Chat document
+        if (!report) {
+            const chat = await Chat.findById(req.params.chatId);
+            if (chat?.url) {
+                report = await ScanReport.findOne({ url: chat.url, status: 'completed' })
+                    .sort({ createdAt: -1 });
+            }
+        }
 
-        res.json({
-            response: `SCAN INITIATED\n\nTarget: ${analysis.url}\nMode: ${analysis.intent.replace(/_/g, ' ')}\nReasoning: ${analysis.reasoning}\n\nFocus Areas:\n${analysis.testCases.map(tc => `— ${tc}`).join('\n')}`,
-            reportId: report._id,
-            analysis
-        });
+        if (!report) {
+            return res.status(404).json({ error: 'No scan report found for this chat. Run a scan first.' });
+        }
 
-    } catch (error) {
-        console.error("[ChatRoute Error]:", error.message);
-        res.status(500).json({ error: "Failed to process conversational command." });
+        // Save user message first (correct ordering)
+        await Message.create({ chatId: req.params.chatId, type: 'user', content: message });
+
+        // Get recent AI messages for context window
+        const recentMsgs = await Message.find({ 
+            chatId: req.params.chatId, 
+            type: { $in: ['user', 'ai'] }
+        }).sort({ createdAt: -1 }).limit(10).lean();
+
+        const historyWindow = recentMsgs.reverse().map(m => ({ 
+            role: m.type === 'user' ? 'user' : 'ai', 
+            content: m.content 
+        }));
+
+        const answer = await chatAgent.analyzeReportQuestion(historyWindow, report);
+
+        // Save AI reply
+        const aiMsg = await Message.create({ chatId: req.params.chatId, type: 'ai', content: answer });
+        await Chat.findByIdAndUpdate(req.params.chatId, { lastMessageAt: new Date() });
+
+        if (global.io) {
+            global.io.to(req.params.chatId).emit('new-message', aiMsg);
+        }
+
+        res.json({ reply: answer, message: aiMsg });
+    } catch (err) {
+        console.error('[ChatThread /ask Error]:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── Pin / Unpin a thread ──────────────────────────────────────────────────────
+router.patch('/thread/:chatId/pin', async (req, res) => {
+    try {
+        const chat = await Chat.findById(req.params.chatId);
+        if (!chat) return res.status(404).json({ error: 'Chat not found' });
+        chat.isPinned = !chat.isPinned;
+        await chat.save();
+        res.json(chat);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── Rename a thread ───────────────────────────────────────────────────────────
+router.patch('/thread/:chatId/rename', async (req, res) => {
+    try {
+        const chat = await Chat.findByIdAndUpdate(
+            req.params.chatId, 
+            { customName: req.body.name }, 
+            { new: true }
+        );
+        if (!chat) return res.status(404).json({ error: 'Chat not found' });
+        res.json(chat);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── Delete a thread and all its messages ──────────────────────────────────────
+router.delete('/thread/:chatId', async (req, res) => {
+    try {
+        await Message.deleteMany({ chatId: req.params.chatId });
+        await Chat.findByIdAndDelete(req.params.chatId);
+        res.json({ message: 'Thread deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 

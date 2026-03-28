@@ -37,12 +37,12 @@ async function runPlaywrightDiagnostics(data) {
         }
 
         parentPort.postMessage({ type: 'completed' });
-        process.exit(0);
+        return;
 
     } catch (error) {
         console.error('[PlaywrightWorker Fatal]:', error);
         parentPort.postMessage({ type: 'failed', error: error.message });
-        process.exit(1);
+        return;
     }
 }
 

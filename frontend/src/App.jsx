@@ -22,11 +22,12 @@ import Footer from './components/Footer';
 
 function App() {
   const [activeReportId, setActiveReportId] = useState(() => localStorage.getItem('sentinel_active_report') || null);
+  const [activeChatId, setActiveChatId] = useState(() => localStorage.getItem('sentinel_active_chat') || null);
 
   useEffect(() => {
-    if (activeReportId) localStorage.setItem('sentinel_active_report', activeReportId);
-    else localStorage.removeItem('sentinel_active_report');
-  }, [activeReportId]);
+    if (activeChatId) localStorage.setItem('sentinel_active_chat', activeChatId);
+    else localStorage.removeItem('sentinel_active_chat');
+  }, [activeChatId]);
   const [viewingReportId, setViewingReportId] = useState(null);
   const [liveReportId, setLiveReportId] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -107,8 +108,9 @@ function App() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  const handleScanStarted = (reportId) => {
+  const handleScanStarted = (reportId, chatId) => {
     setLiveReportId(reportId);
+    if (chatId) setActiveChatId(chatId);
     setRefreshKey(prev => prev + 1);
   };
 
@@ -129,23 +131,29 @@ function App() {
     
     socket.on('connect', () => {
       console.log('[Socket]: Reconnected. Syncing rooms...');
-      if (activeReportId) {
-        socket.emit('join-room', activeReportId);
+      if (liveReportId) {
+        socket.emit('join-room', liveReportId);
+        console.log('[Socket]: Joined room', liveReportId);
       }
     });
 
+    if (liveReportId) {
+      socket.emit('join-room', liveReportId);
+    }
+
     socket.on('scan-progress', (data) => {
       setScanProgress(data);
-      // Persist progress to handle reloads
       localStorage.setItem('sentinel_pending_progress', JSON.stringify(data));
 
       if (data.status === 'completed' || data.status === 'failed') {
         localStorage.removeItem('sentinel_pending_progress');
+        // Refresh sidebar so new chat thread / scan count appears
+        setRefreshKey(prev => prev + 1);
         setTimeout(() => setScanProgress(null), 5000);
       }
     });
     return () => socket.disconnect();
-  }, [activeReportId]);
+  }, [liveReportId]);
 
   const handleLogin = () => {
     setIsLoggedIn(true);
@@ -424,25 +432,22 @@ function App() {
 
               <div className={`fixed inset-y-0 left-0 z-[70] transition-transform duration-500 transform lg:relative lg:translate-x-0 lg:p-4 lg:md:p-6 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
                 <ChatSidebar
-                  onSelectSession={(id) => {
-                    setActiveReportId(id);
-                    setViewingReportId(null); // Explicitly ensure we are in chat mode
+                  onSelectChat={(chatId) => {
+                    setActiveChatId(chatId);
+                    setViewingReportId(null);
                     setShowReportList(false);
                     setShowGlobalStats(false);
                     setIsSidebarOpen(false);
                   }}
                   onViewReport={(id) => {
                     setViewingReportId(id);
-                    setActiveReportId(id); // Also sync active report
                     setShowReportList(false);
                     setShowGlobalStats(false);
                     setIsSidebarOpen(false);
                   }}
-                  activeReportId={activeReportId}
+                  activeChatId={activeChatId}
                   onNewSession={() => {
-                    localStorage.removeItem('sentinel_chat_messages');
-                    setChatKey(prev => prev + 1);
-                    setActiveReportId(null);
+                    setActiveChatId(null);
                     setViewingReportId(null);
                     setShowReportList(false);
                     setShowGlobalStats(false);
@@ -457,21 +462,14 @@ function App() {
                     setViewingReportId(null);
                     setIsSidebarOpen(false);
                   }}
-                  onDeleteReport={(id) => {
-                    if (activeReportId === id) {
-                      setActiveReportId(null);
+                  onDeleteChat={(id) => {
+                    if (activeChatId === id) {
+                      setActiveChatId(null);
                       setViewingReportId(null);
-                      setChatKey(prev => prev + 1); // FORCE RESET CHAT INTERFACE
-                      localStorage.removeItem('sentinel_chat_messages');
                     }
-                    // If the deleted report is currently scanning, clear progress
-                    if (scanProgress && (
-                      !scanProgress.reportId || // FALLBACK: Clear orphaned/legacy bars
-                      scanProgress.reportId === id || 
-                      scanProgress.id === id
-                    )) {
-                       setScanProgress(null);
-                       localStorage.removeItem('sentinel_pending_progress');
+                    if (scanProgress && (scanProgress.chatId === id)) {
+                      setScanProgress(null);
+                      localStorage.removeItem('sentinel_pending_progress');
                     }
                     setRefreshKey(prev => prev + 1);
                   }}
@@ -561,14 +559,12 @@ function App() {
                       className="h-full"
                     >
                       <ChatInterface
-                        key={chatKey}
-                        activeReportId={activeReportId}
-                        onScanStarted={(id) => {
-                          handleScanStarted(id);
-                        }}
+                        key={activeChatId || 'new'}
+                        activeChatId={activeChatId}
+                        onScanStarted={handleScanStarted}
                         onViewFullReport={setViewingReportId}
                         onRefresh={() => setRefreshKey(prev => prev + 1)}
-                        onResetTarget={() => setActiveReportId(null)}
+                        onResetTarget={() => { setActiveChatId(null); }}
                         globalScanProgress={scanProgress}
                         pendingMessage={pendingChatMessage}
                         onMessageConsumed={() => setPendingChatMessage(null)}

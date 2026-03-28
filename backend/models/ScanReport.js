@@ -73,7 +73,22 @@ const scanReportSchema = new mongoose.Schema({
         role: { type: String, enum: ['user', 'ai'] },
         content: String,
         timestamp: String
-    }]
+    }],
+    comparison: {
+        previousReportId: { type: mongoose.Schema.Types.ObjectId, ref: 'ScanReport' },
+        scoreDelta: { type: Number, default: 0 },
+        stats: {
+            newErrors: { type: Number, default: 0 },
+            fixedErrors: { type: Number, default: 0 },
+            impact: { type: String, enum: ['Improved', 'Regressed', 'Stable'], default: 'Stable' }
+        },
+        lighthouseDelta: {
+            performance: { type: Number, default: 0 },
+            accessibility: { type: Number, default: 0 },
+            bestPractices: { type: Number, default: 0 },
+            seo: { type: Number, default: 0 }
+        }
+    }
 }, { timestamps: true });
 
 // Tactical Indexes for performance and caching

@@ -15,7 +15,7 @@ const activeWorkers = new Map();
 
 // ── Start a new scan ──────────────────────────────────────────────────────────
 router.post('/scan', async (req, res) => {
-    const { url, userId, force, singlePageOnly, tests, scope, mode } = req.body;
+    const { url, userId, force, singlePageOnly, tests, scope, mode, chatId } = req.body;
     if (!url) return res.status(400).json({ error: 'URL is required' });
     if (!userId) return res.status(400).json({ error: 'User ID is required' });
 
@@ -28,16 +28,17 @@ router.post('/scan', async (req, res) => {
 
     try {
         // Run scan fully async — returns reportId immediately to the client
-        const { reportId, isCached } = await startScan(url, userId, force, singlePageOnly, tests, scope, mode);
+        const { reportId, isCached } = await startScan(url, userId, force, 'standard', singlePageOnly, tests, scope, mode, chatId);
 
         if (isCached) {
             return res.status(200).json({
                 message: 'Using cached report',
                 reportId: reportId,
+                chatId: chatId || null,
                 isCached: true
             });
         } else {
-            res.status(202).json({ message: 'Scan started', reportId: reportId });
+            res.status(202).json({ message: 'Scan started', reportId: reportId, chatId: chatId || null });
         }
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -271,7 +272,7 @@ const calculateReportHealth = (report) => {
  * startScan - Initiates the background scan process.
  * Separated from runFullScan for cleaner async handling.
  */
-async function startScan(baseUrl, userId, force = false, chaosIntensity = 'standard', singlePageOnly = false, tests = [], scope = 'single', mode = 'specific') {
+async function startScan(baseUrl, userId, force = false, chaosIntensity = 'standard', singlePageOnly = false, tests = [], scope = 'single', mode = 'specific', chatId = null) {
     // ── CACHE CHECK ──────────────────────────────────────────────────────
     if (!force) {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -313,11 +314,11 @@ async function startScan(baseUrl, userId, force = false, chaosIntensity = 'stand
     await report.save();
 
     // Launch background processor
-    runFullScan(report._id, baseUrl, chaosIntensity, singlePageOnly, finalModules, scope, mode).catch(e => {
+    runFullScan(report._id, baseUrl, chaosIntensity, singlePageOnly, finalModules, scope, mode, chatId).catch(e => {
         console.error(`[Pipeline Critical Failure]: ${e.message}`);
     });
 
-    return { reportId: report._id, isCached: false };
+    return { reportId: report._id, isCached: false, chatId };
 }
 
 // ── Helper: wrap promise with timeout ────────────────────────────────────────
@@ -331,14 +332,14 @@ const withTimeout = (promise, ms, taskName) => {
 /**
  * runFullScan - Spawns a background worker thread for the pipeline.
  */
-async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = false, tests = [], scope = 'single', mode = 'specific') {
+async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = false, tests = [], scope = 'single', mode = 'specific', chatId = null) {
     const { Worker } = require('worker_threads');
     const path = require('path');
 
     console.log(`[Main]: Spawning Tactical Worker for ${reportId}...`);
 
     const worker = new Worker(path.join(__dirname, '../workers/scanWorker.js'), {
-        workerData: { reportId: reportId.toString(), baseUrl, chaosIntensity, singlePageOnly, tests, scope, mode }
+        workerData: { reportId: reportId.toString(), baseUrl, chaosIntensity, singlePageOnly, tests, scope, mode, chatId: chatId ? chatId.toString() : null }
     });
 
     activeWorkers.set(reportId.toString(), worker);
@@ -352,6 +353,11 @@ async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = f
                     stage: msg.stage, 
                     status: 'in-progress' 
                 });
+            }
+        }
+        if (msg.type === 'new-message') {
+            if (global.io) {
+                global.io.to(msg.message.chatId.toString()).emit('new-message', msg.message);
             }
         }
         if (msg.type === 'failed') {
@@ -372,7 +378,19 @@ async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = f
     worker.on('exit', (code) => {
         console.log(`[Main]: Tactical Worker exited with code ${code}`);
         activeWorkers.delete(reportId.toString());
+        if (code === 0 && global.io) {
+            // Emit completed event so the frontend ChatInterface refreshes messages
+            global.io.to(reportId.toString()).emit('scan-progress', {
+                reportId: reportId.toString(),
+                chatId: chatId ? chatId.toString() : null,
+                percent: 100,
+                stage: 'Scan complete.',
+                status: 'completed'
+            });
+        }
     });
 }
+
+// ── module.exports follows ──
 
 module.exports = { router, runFullScan, activeWorkers };

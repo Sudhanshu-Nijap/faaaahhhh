@@ -8,6 +8,17 @@ const { Server } = require('socket.io');
 
 dotenv.config({ path: path.join(__dirname, '.env'), override: true });
 
+// ── Global Panic Mitigation ──────────────────────────────────────────────────
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Fatal]: Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[Fatal]: Uncaught Exception:', err);
+    // Give it a moment to log before dying
+    setTimeout(() => process.exit(1), 1000);
+});
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -32,9 +43,79 @@ const scanRoutes = require('./routes/scanRoutes');
 const authRoutes = require('./routes/authRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 
+// --- CRITICAL DISPATCH OVERRIDE (MOUNTED FIRST TO PREVENT 404) ---
+app.post('/api/pulse', async (req, res) => {
+    try {
+        const { reportId } = req.body;
+        const ScanReport = require('./models/ScanReport');
+        const reportExporter = require('./services/reportExporter');
+        const fs = require('fs');
+
+        const report = await ScanReport.findById(reportId);
+        if (!report) return res.status(404).json({ error: 'Report not found' });
+        
+        const targetWebhook = process.env.DISCORD_WEBHOOK_URL;
+        if (!targetWebhook) return res.status(400).json({ error: 'Webhook missing' });
+
+        // 1. Generate Latest PDF Snapshot
+        console.log(`[Pulse]: Generating PDF for ${reportId}...`);
+        const pdfUrl = await reportExporter.generatePDF(reportId);
+        const pdfPath = path.join(__dirname, pdfUrl);
+
+        if (!fs.existsSync(pdfPath)) {
+            throw new Error('PDF Generation failed: File not found.');
+        }
+
+        const hostname = new URL(report.url).hostname;
+
+        // 2. Prepare Webhook Payload
+        const embed = {
+            title: `🛡️ Sentinel AI Dispatch: ${hostname}`,
+            url: `http://localhost:5173/report/${report._id}`,
+            description: `Neural analysis complete for **${report.url}**`,
+            color: 0xFF007F,
+            fields: [
+                { name: '❤️ Health Score', value: `${report.healthScore || 'N/A'}`, inline: true },
+                { name: '📄 Nodes Scanned', value: `${report.pagesCrawled || 1}`, inline: true },
+                { name: '🚨 Findings', value: `${(report.brokenLinks?.length || 0) + (report.consoleErrors?.length || 0)} Anomalies`, inline: true }
+            ],
+            footer: { text: 'Sentinel Pulse Pipeline' },
+            timestamp: new Date()
+        };
+
+        // 3. Dispatch Multipart Payload via Native Fetch (Node v22+)
+        const { Blob } = require('buffer');
+        const formData = new FormData();
+        formData.append('payload_json', JSON.stringify({
+            content: `⚡ **Dispatch Received:** Tactical report for **${hostname}** ready for review.\n🔗 [Direct Link](http://localhost:5173/report/${report._id})`,
+            embeds: [embed]
+        }));
+        
+        const pdfBuffer = fs.readFileSync(pdfPath);
+        formData.append('file', new Blob([pdfBuffer], { type: 'application/pdf' }), `Sentinel-Report-${hostname}.pdf`);
+
+        console.log(`[Pulse]: Dispatching to Discord...`);
+        const response = await fetch(targetWebhook, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            const errBody = await response.text();
+            throw new Error(`Discord API Rejected Dispatch: ${response.status} ${errBody}`);
+        }
+
+        res.json({ message: 'Neural Pulse & PDF Dispatched Successfully.' });
+    } catch (e) {
+        console.error('[Pulse Critical Failure]:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.use('/api', scanRoutes.router);
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
+
 
 const server = http.createServer(app);
 
@@ -50,6 +131,11 @@ io.on('connection', (socket) => {
     socket.on('join-room', (reportId) => {
         socket.join(reportId);
         console.log(`Socket ${socket.id} joined Tactical Room: ${reportId}`);
+    });
+
+    socket.on('join-chat', (chatId) => {
+        socket.join(chatId);
+        console.log(`Socket ${socket.id} joined Neural Chat: ${chatId}`);
     });
 
     socket.on('disconnect', () => {

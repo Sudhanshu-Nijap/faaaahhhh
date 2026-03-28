@@ -32,7 +32,8 @@ async function runDedicatedScan(url) {
             port: chrome.port,
             output: 'json',
             logLevel: 'error',
-            onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo']
+            onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
+            throttlingMethod: 'provided'
         });
 
         await chrome.kill();

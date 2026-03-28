@@ -30,7 +30,7 @@ async function runLighthouseAudit(data) {
         if (!tests.includes('lighthouse') && !tests.includes('performance') && !tests.includes('accessibility')) {
             console.log('[LighthouseWorker]: Bypassing audit, modules not selected.');
             parentPort.postMessage({ type: 'completed' });
-            process.exit(0);
+            return;
         }
 
         emitProgress(5, 'Engaging Dedicated Lighthouse Core...');
@@ -48,16 +48,16 @@ async function runLighthouseAudit(data) {
             });
             console.log(`[LighthouseWorker]: Audit Success for ${baseUrl}`);
         } else {
-            console.warn(`[LighthouseWorker]: Audit returned NO telemetry for ${baseUrl}`);
+            console.warn(`[LighthouseWorker]: Audit returned NO telemetry for [${baseUrl}]`);
         }
 
         parentPort.postMessage({ type: 'completed' });
-        process.exit(0);
+        return;
 
     } catch (error) {
         console.error('[LighthouseWorker Fatal]:', error);
         parentPort.postMessage({ type: 'failed', error: error.message });
-        process.exit(1);
+        return;
     }
 }
 

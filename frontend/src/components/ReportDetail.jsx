@@ -446,16 +446,12 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
 
           <button
             onClick={async () => {
-              const url = await prompt({
-                title: "Discord Dispatch",
-                message: "Enter the target Discord Webhook URL for this neural pulse.",
-                confirmText: "Dispatch"
-              });
-              if (url) {
-                try {
-                  await axios.post('http://localhost:5000/api/notify/notify', { reportId, type: 'discord', webhookUrl: url });
-                  setAlert({ type: 'success', message: 'Discord Pulse Dispatched.' });
-                } catch (e) { setAlert({ type: 'error', message: 'Dispatch Failed.' }); }
+              try {
+                // Sends report to system Discord webhook configured in .env
+                await axios.post('http://localhost:5000/api/pulse', { reportId, type: 'discord' });
+                setAlert({ type: 'success', message: 'Discord Pulse Dispatched Successfully.' });
+              } catch (e) { 
+                setAlert({ type: 'error', message: 'Dispatch Failed: ' + (e.response?.data?.error || 'Uplink Error') }); 
               }
             }}
             className="flex-none flex items-center justify-center gap-2 bg-[#5865F2]/10 hover:bg-[#5865F2] hover:text-white border border-[#5865F2]/30 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest text-[#5865F2] transition-all shadow-neon"
@@ -702,7 +698,74 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
                 </div>
               )}
 
-
+              {/* ── Delta Comparison Panel ── */}
+              {report.comparison?.previousReportId && (
+                <div className="glass-euphoria p-8 md:p-12 rounded-[40px] border-white/5 shadow-2xl relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-8 opacity-5"><Activity size={80} /></div>
+                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        <div className="size-10 bg-eu-accent/20 rounded-xl flex items-center justify-center border border-eu-accent/30 shadow-neon text-eu-accent">
+                          <Activity size={16} />
+                        </div>
+                        <h3 className="text-xl font-black uppercase tracking-tight text-white font-outfit">
+                          Scan <span className="text-eu-accent italic">Delta</span>
+                        </h3>
+                      </div>
+                      <p className="text-slate-500 text-xs font-medium ml-14">Comparison against your previous scan of this target.</p>
+                    </div>
+                    <span className={`px-5 py-2 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] border shadow-neon ${
+                      report.comparison.stats.impact === 'Improved'
+                        ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                        : report.comparison.stats.impact === 'Regressed'
+                        ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                        : 'bg-white/5 border-white/10 text-slate-400'
+                    }`}>
+                      {report.comparison.stats.impact === 'Improved' ? '↑' : report.comparison.stats.impact === 'Regressed' ? '↓' : '→'} {report.comparison.stats.impact}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="glass-euphoria p-5 rounded-2xl border border-white/5 text-center space-y-2">
+                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Health Score</p>
+                      <p className={`text-3xl font-black font-outfit ${report.comparison.scoreDelta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {report.comparison.scoreDelta >= 0 ? '+' : ''}{report.comparison.scoreDelta}
+                      </p>
+                      <p className="text-[9px] text-slate-600 uppercase tracking-widest">pts</p>
+                    </div>
+                    <div className="glass-euphoria p-5 rounded-2xl border border-red-500/20 text-center space-y-2">
+                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-red-400">New Errors</p>
+                      <p className="text-3xl font-black font-outfit text-red-400">{report.comparison.stats.newErrors}</p>
+                      <p className="text-[9px] text-slate-600 uppercase tracking-widest">introduced</p>
+                    </div>
+                    <div className="glass-euphoria p-5 rounded-2xl border border-green-500/20 text-center space-y-2">
+                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-green-400">Fixed Errors</p>
+                      <p className="text-3xl font-black font-outfit text-green-400">{report.comparison.stats.fixedErrors}</p>
+                      <p className="text-[9px] text-slate-600 uppercase tracking-widest">resolved</p>
+                    </div>
+                    <div className="glass-euphoria p-5 rounded-2xl border border-white/5 text-center space-y-2">
+                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Performance</p>
+                      <p className={`text-3xl font-black font-outfit ${(report.comparison.lighthouseDelta?.performance || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {(report.comparison.lighthouseDelta?.performance || 0) >= 0 ? '+' : ''}{report.comparison.lighthouseDelta?.performance || 0}
+                      </p>
+                      <p className="text-[9px] text-slate-600 uppercase tracking-widest">lighthouse pts</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4 mt-4">
+                    {[
+                      { label: 'SEO', val: report.comparison.lighthouseDelta?.seo || 0 },
+                      { label: 'Accessibility', val: report.comparison.lighthouseDelta?.accessibility || 0 },
+                      { label: 'Best Practices', val: report.comparison.lighthouseDelta?.bestPractices || 0 },
+                    ].map(({ label, val }) => (
+                      <div key={label} className="glass-euphoria p-4 rounded-2xl border border-white/5 flex items-center justify-between">
+                        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">{label}</p>
+                        <p className={`text-lg font-black font-outfit ${val >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {val >= 0 ? '+' : ''}{val}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
             </motion.div>
           )}

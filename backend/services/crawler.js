@@ -62,15 +62,13 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
             }
             
             try {
-                // Multi-stage navigation strategy for maximum resilience
                 try {
-                    await page.goto(url, { waitUntil: 'load', timeout: 30000 });
+                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
                 } catch (e) {
-                    console.warn(`[Crawler]: 'load' timed out for ${url}, trying 'domcontentloaded'...`);
-                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+                    console.warn(`[Crawler]: Navigation slow for ${url}, proceeding...`);
                 }
                 
-                await page.waitForTimeout(2000); // Allow additional time for dynamic SPAs
+                await page.waitForTimeout(500); // reduced from 2000
                 internalPages.add(url);
 
                 // Capture Page Screenshot
@@ -144,8 +142,8 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
                     try {
                         // Try HEAD first (faster), fall back to GET
                         const res = await axios.head(link, {
-                            timeout: 8000,
-                            maxRedirects: 5,
+                            timeout: 3000,
+                            maxRedirects: 3,
                             validateStatus: () => true,
                             headers: { 'User-Agent': 'Sentinel-QA-Bot/1.0' }
                         });
