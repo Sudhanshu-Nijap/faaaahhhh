@@ -15,9 +15,9 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
     const brokenLinks = [];
     
     // Constraints
-    const maxPages = options.maxPages || 15;
-    const maxDepth = options.maxDepth !== undefined ? options.maxDepth : 2;
-    const maxLinks = 80;
+    const maxPages = options.maxPages || 3;
+    const maxDepth = options.maxDepth !== undefined ? options.maxDepth : 0;
+    const maxLinks = 10;
     const structure = { nodes: [], links: [] };
 
     const progress = (p, s) => {
@@ -68,20 +68,9 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
                     console.warn(`[Crawler]: Navigation slow for ${url}, proceeding...`);
                 }
                 
-                await page.waitForTimeout(500); // reduced from 2000
+                await page.waitForTimeout(200); // reduced further for hackathon speed
                 internalPages.add(url);
 
-                // Capture Page Screenshot
-                const screenshotName = `screenshot-${Date.now()}-${visited.size}.png`;
-                const screenshotPath = path.join(__dirname, '../screenshots', screenshotName);
-                try {
-                    await page.screenshot({ path: screenshotPath, fullPage: false });
-                    await ScanReport.findByIdAndUpdate(reportId, {
-                        $push: { screenshots: { page: url, path: `/screenshots/${screenshotName}`, type: 'Crawl Snapshot' } }
-                    });
-                } catch (ssErr) {
-                    console.warn(`[Crawler]: Screenshot failed for ${url}: ${ssErr.message}`);
-                }
 
                 // ── Site Structure Mapping ──────────────────────────────────
                 const pathName = new URL(url).pathname || '/';

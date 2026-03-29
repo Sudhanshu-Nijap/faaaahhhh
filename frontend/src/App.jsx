@@ -136,37 +136,53 @@ function App() {
   }, []);
 
   const socketRef = useRef(null);
-  
+
+  // 1. Persistent Socket Initialization
   useEffect(() => {
     if (!socketRef.current) {
-        socketRef.current = io('http://localhost:5005');
+        socketRef.current = io('http://localhost:5005', {
+            reconnectionAttempts: 10
+        });
+        
+        const socket = socketRef.current;
+        
+        socket.on('connect', () => {
+          console.log('[Socket]: Tactical uplink established.');
+          // If we had a live report, rejoin its room on reconnection
+          const currentLiveId = localStorage.getItem('sentinel_live_report_id');
+          if (currentLiveId) {
+            socket.emit('join-room', currentLiveId);
+          }
+        });
+
+        socket.on('scan-progress', (data) => {
+          setScanProgress(data);
+          localStorage.setItem('sentinel_pending_progress', JSON.stringify(data));
+
+          if (data.status === 'completed' || data.status === 'failed') {
+            localStorage.removeItem('sentinel_pending_progress');
+            localStorage.removeItem('sentinel_live_report_id');
+            setRefreshKey(prev => prev + 1);
+            setTimeout(() => setScanProgress(null), 5000);
+          }
+        });
     }
-    const socket = socketRef.current;
-    
-    socket.on('connect', () => {
-      console.log('[Socket]: Reconnected. Syncing rooms...');
-      if (liveReportId) {
-        socket.emit('join-room', liveReportId);
-        console.log('[Socket]: Joined room', liveReportId);
-      }
-    });
 
-    if (liveReportId) {
-      socket.emit('join-room', liveReportId);
+    return () => {
+        if (socketRef.current) {
+            socketRef.current.disconnect();
+            socketRef.current = null;
+        }
+    };
+  }, []);
+
+  // 2. Room Switching Logic
+  useEffect(() => {
+    if (liveReportId && socketRef.current) {
+      localStorage.setItem('sentinel_live_report_id', liveReportId);
+      socketRef.current.emit('join-room', liveReportId);
+      console.log('[Socket]: Joined active scan room:', liveReportId);
     }
-
-    socket.on('scan-progress', (data) => {
-      setScanProgress(data);
-      localStorage.setItem('sentinel_pending_progress', JSON.stringify(data));
-
-      if (data.status === 'completed' || data.status === 'failed') {
-        localStorage.removeItem('sentinel_pending_progress');
-        // Refresh sidebar so new chat thread / scan count appears
-        setRefreshKey(prev => prev + 1);
-        setTimeout(() => setScanProgress(null), 5000);
-      }
-    });
-    return () => socket.disconnect();
   }, [liveReportId]);
 
   const handleLogin = () => {

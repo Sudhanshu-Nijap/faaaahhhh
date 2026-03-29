@@ -40,7 +40,7 @@ const persistMessageLocally = async (chatId, type, content, scanReportId, report
 
 const safeMessageUplink = async (chatId, type, content, scanReportId, reportSummary) => {
     if (mainChatMessageDispatcher) {
-        return await mainChatMessageDispatcher(type, content, scanReportId, reportSummary);
+        return await mainChatMessageDispatcher(chatId, type, content, scanReportId, reportSummary);
     }
     
     // Dispatcher not ready (e.g. still requiring modules) -> Persist and queue for sync
@@ -81,6 +81,7 @@ async function runMasterOrchestrator(data) {
 
     try {
         console.log(`[MasterWorker]: Orchestrating tactical scan for ${baseUrl}`);
+        let lighthouseMetrics = null;
 
         const emitProgress = (percent, stage) => {
             if (parentPort) parentPort.postMessage({ type: 'progress', percent, stage });
@@ -119,48 +120,79 @@ async function runMasterOrchestrator(data) {
         const runIh = tests.includes('lighthouse') || tests.includes('performance') || tests.includes('accessibility');
         if (runIh) {
             emitProgress(60, 'Engaging Dedicated Lighthouse Engine...');
+            
+            // Heartbeat progress to keep UI alive during long audit
+            let lighthouseWait = 60;
+            const lbInterval = setInterval(() => {
+                if (lighthouseWait < 85) {
+                    lighthouseWait += 2;
+                    emitProgress(lighthouseWait, 'Lighthouse Pulse in progress: Deciphering quality metrics...');
+                }
+            }, 3000);
+
             const dedicatedData = await qaScanner.runDedicatedScan(baseUrl).catch(err => {
+                clearInterval(lbInterval);
                 console.error(`[MasterWorker]: Dedicated Lighthouse Audit FAILED: ${err.message}`);
                 return null;
             });
 
-            if (dedicatedData && (dedicatedData.scores?.performance > 0 || dedicatedData.scores?.seo > 0 || dedicatedData.scores?.accessibility > 0)) {
-                console.log(`[MasterWorker]: Syncing Lighthouse Scores for ${baseUrl}`);
+            clearInterval(lbInterval);
+
+            if (dedicatedData && (dedicatedData.scores?.performance >= 0)) {
+                console.log(`[MasterWorker]: Synchronizing tactical scores for ${baseUrl}`);
+                lighthouseMetrics = dedicatedData.scores;
+                // Pre-sync accessibility issues to the DB for health calculation
                 await ScanReport.findByIdAndUpdate(reportId, {
-                    $set: { lighthouseScores: dedicatedData.scores },
                     $push: { accessibilityIssues: { $each: dedicatedData.accessibilityIssues || [] } }
                 });
                 emitProgress(90, 'Lighthouse Telemetry Synchronized.');
             } else {
-                console.warn(`[MasterWorker]: Lighthouse returned 0 or failed for ${baseUrl}. Preserving existing metrics.`);
+                console.warn(`[MasterWorker]: Lighthouse returned 0 or failed for ${baseUrl}.`);
             }
         } else {
             emitProgress(90, 'Skipping Lighthouse (User specific request).');
         }
 
-        // --- STAGE 3: AI Synthesis (qaAgent) ---
+        // --- STAGE 3: AI Synthesis & Evolution ---
         emitProgress(92, 'Syncing Final AI Analysis...');
         const { prevReportId } = data;
-        await qaAgent.runAgent(reportId, prevReportId);
 
-        // --- STAGE 4: Delta Comparison ---
-        emitProgress(95, 'Calculating Performance Delta...');
-        const currentReport = await ScanReport.findById(reportId);
-        const previousReport = prevReportId ? await ScanReport.findById(prevReportId) : null;
+        // Parallel Fetch for current and baseline reports
+        const [currentReport, previousReport] = await Promise.all([
+            ScanReport.findById(reportId),
+            prevReportId ? ScanReport.findById(prevReportId) : Promise.resolve(null)
+        ]);
 
-        // Calculate health score first so comparison service can use it
+        if (!currentReport) throw new Error('Neural focus lost: Report not found during synthesis.');
+
+        // 1. Calculate health score locally first
         const healthScore = calculateReportHealth(currentReport);
         currentReport.healthScore = healthScore; 
 
+        // 2. Run AI Agent and capture insights (avoiding direct DB updates in agent)
+        const aiInsights = await qaAgent.runAgent(reportId, prevReportId, currentReport, previousReport);
+
+        // 3. Run Comparison Service
+        emitProgress(95, 'Calculating Performance Delta...');
         const comparison = await comparisonService.calculateDelta(currentReport, previousReport);
 
-        // Finalize Report using explicit save to ensure stability
-        currentReport.status = 'completed';
-        currentReport.healthScore = healthScore;
-        currentReport.comparison = comparison;
+        // Finalize Report - Atomic update including all gathered intelligence
+        console.log(`[MasterWorker]: Finalizing Atomic Update for ${reportId}...`);
+        const finalSet = {
+            status: 'completed',
+            healthScore: healthScore,
+            comparison: comparison,
+            aiInsights: aiInsights
+        };
         
-        await currentReport.save({ validateBeforeSave: false });
-        const finalReport = currentReport;
+        // Ensure lighthouse scores are included in the final write if they were captured
+        if (lighthouseMetrics) {
+            finalSet.lighthouseScores = lighthouseMetrics;
+        }
+
+        const finalReport = await ScanReport.findByIdAndUpdate(reportId, {
+            $set: finalSet
+        }, { returnDocument: 'after' });
 
         // --- STAGE 5: Post to Chat Thread ---
         if (chatId) {

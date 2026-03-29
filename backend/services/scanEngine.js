@@ -95,7 +95,7 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
     let browser;
     try {
         console.log(`[scanEngine]: Initiating Converged Lean Scan: ${url} | Modules: ${scannedModules.join(', ')}`);
-    emitProgress(10, 'Establishing neural uplink...');
+    emitProgress(5, 'Establishing neural uplink...');
     
     // 1. Launch Browser with Remote Debugging for Lighthouse
     const port = 9222 + Math.floor(Math.random() * 100);
@@ -175,21 +175,22 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
         
         // --- 2b. Converged Telemetry Capture ---
         // Wait for potential dynamic content to settle but much faster
-        await page.waitForTimeout(500); 
+        await page.waitForTimeout(100); 
+
+        const screenshotName = `screenshot-${Date.now()}.png`;
+        const screenshotPath = path.join(__dirname, '../screenshots', screenshotName);
+        
+        emitProgress(20, 'Capturing visual states & UI patterns...');
+        // Optimization: Use standard viewport screenshot for speed (skip stitching)
+        await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
 
         // 2c. Interaction Audit: Forms
         let formIssues = [];
         if (scannedModules.includes('forms') || scannedModules.includes('ui')) {
-            emitProgress(70, 'Auditing form interaction layers...');
+            emitProgress(40, 'Auditing form interaction layers...');
             const formScanner = require('./formScanner');
             formIssues = await formScanner.scanForms(page);
         }
-        const screenshotName = `screenshot-${Date.now()}.png`;
-        const screenshotPath = path.join(__dirname, '../screenshots', screenshotName);
-        
-        emitProgress(50, 'Capturing visual states & UI patterns...');
-        // Optimization: Use standard viewport screenshot for speed (skip stitching)
-        await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
 
         const uiIssues = scannedModules.includes('ui') ? await scanUI(page).catch(() => []) : [];
         
@@ -200,14 +201,14 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
                 Array.from(document.querySelectorAll('a[href]'))
                     .map(a => a.href)
                     .filter(href => href.startsWith('http'))
-                    .slice(0, 5) // Reduced for extreme speed
+                    .slice(0, 2) // Extreme speed for hackathon
             );
             
             // Parallelize link checks with Promise.all for speed
             await Promise.all(links.map(async (link) => {
                 try {
                     const res = await axios.head(link, { 
-                        timeout: 1500, // Even more aggressive
+                        timeout: 500, // Brutal timeout for hackathon
                         validateStatus: () => true,
                         headers: { 'User-Agent': 'Sentinel-Turbo-Bot/1.0' }
                     }).catch(() => null);
@@ -221,7 +222,7 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
 
 
         // 5. Finalize Playwright Telemetry
-        emitProgress(90, 'Synthesizing Session Telemetry...');
+        emitProgress(80, 'Synthesizing Session Telemetry...');
         
         const finalUpdate = {
             $set: {
@@ -283,13 +284,13 @@ const runTargetedCrawlScan = async (reportId, url, tests, emitProgress) => {
     // 1. Universal Discovery Phase
     const pages = await crawler.crawlWebsite(reportId, url, emitProgress, { maxPages: 3, maxDepth: 0 });
     
-    // 2. Parallel Diagnostic Surge
-    // Use Promise.all to scan all discovered pages concurrently for extreme speed
-    await Promise.all(pages.map(targetUrl => 
-        runSinglePageScan(reportId, targetUrl, tests, emitProgress).catch(err => {
-            console.error(`[scanEngine]: Targeted page scan failed for ${targetUrl}: ${err.message}`);
-        })
-    ));
+    // Parallel Diagnostic Surge - Only diagnostic entry page for speed
+    // If multiple pages are found, they're only tracked in the discovery stage
+    if (pages.length > 0) {
+        await runSinglePageScan(reportId, pages[0], tests, emitProgress).catch(err => {
+            console.error(`[scanEngine]: Targeted page scan failed for ${pages[0]}: ${err.message}`);
+        });
+    }
 };
 
 /**

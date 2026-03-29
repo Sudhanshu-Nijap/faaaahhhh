@@ -33,15 +33,18 @@ async function runDedicatedScan(url) {
             ] 
         });
         
-        console.log(`[qaScanner]: Pulse Port Active: ${chrome.port}. Stabilization Window (1000ms)...`);
-        await new Promise(res => setTimeout(res, 1000));
+        console.log(`[qaScanner]: Pulse Port Active: ${chrome.port}. Stabilization Window (500ms)...`);
+        await new Promise(res => setTimeout(res, 500));
 
         const result = await lighthouse(url, {
             port: chrome.port,
             output: 'json',
-            logLevel: 'info', 
+            logLevel: 'silent', 
             onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
-            throttlingMethod: 'provided'
+            settings: {
+                throttlingMethod: 'provided',
+                onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo']
+            }
         });
 
         if (result && result.lhr) {
@@ -59,9 +62,15 @@ async function runDedicatedScan(url) {
     } finally {
         if (chrome) {
             console.log('[qaScanner]: Closing dedicated bridge...');
-            await chrome.kill().catch(() => {});
+            try {
+                if (typeof chrome.kill === 'function') {
+                    await chrome.kill();
+                }
+            } catch (killErr) {
+                console.warn('[qaScanner]: Non-critical cleanup failure:', killErr.message);
+            }
             // --- High-Resiliency Cleanup Window (V34) ---
-            await new Promise(res => setTimeout(res, 500));
+            await new Promise(res => setTimeout(res, 100));
         }
     }
 }

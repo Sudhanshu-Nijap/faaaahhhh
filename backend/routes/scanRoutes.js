@@ -268,18 +268,19 @@ const calculateReportHealth = (report) => {
  * Separated from runFullScan for cleaner async handling.
  */
 async function startScan(baseUrl, userId, force = false, chaosIntensity = 'standard', singlePageOnly = false, tests = [], scope = 'single', mode = 'specific', chatId = null) {
-    // ── CACHE CHECK ──────────────────────────────────────────────────────
+    // ── CACHE CHECK (GLOBAL REDUNDANCY MITIGATION) ───────────────────
     if (!force) {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        
+        // Try to find a recent report for this URL (global)
         const existingReport = await ScanReport.findOne({
             url: baseUrl,
-            userId,
             status: 'completed',
             createdAt: { $gt: oneHourAgo }
         }).sort({ createdAt: -1 });
 
         if (existingReport) {
-            console.log(`[Cache]: Reusing recent report for ${baseUrl}`);
+            console.log(`[Cache]: Reusing recent global report for ${baseUrl} (Source: ${existingReport.userId === userId ? 'Self' : 'Other User'})`);
             return { reportId: existingReport._id, isCached: true };
         }
     }

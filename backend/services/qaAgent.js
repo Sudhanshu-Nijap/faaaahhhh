@@ -84,13 +84,11 @@ class QAAgent {
             );
             
             const parsed = JSON.parse(result.choices[0].message.content);
-            await ScanReport.findByIdAndUpdate(this.reportId, {
-                aiInsights: {
-                    classification: parsed.classification || 'ANALYSIS COMPLETE',
-                    summary: parsed.summary || 'Strategic audit complete.',
-                    issues: (parsed.issues || []).slice(0, 5)
-                }
-            });
+            return {
+                classification: parsed.classification || 'ANALYSIS COMPLETE',
+                summary: parsed.summary || 'Strategic audit complete.',
+                issues: (parsed.issues || []).slice(0, 5)
+            };
         } catch (e) {
             console.warn(`[qaAgent]: Neural analysis pulse failed (${e.message}). Triggering local high-fidelity synthesis...`);
             
@@ -127,13 +125,11 @@ class QAAgent {
                 });
             }
 
-            await ScanReport.findByIdAndUpdate(this.reportId, {
-                aiInsights: {
-                    classification: 'LOCAL_SYNTHESIS',
-                    summary: 'AI analysis timed out. Displaying local diagnostic summary based on raw telemetry.',
-                    issues: localIssues
-                }
-            });
+            return {
+                classification: 'LOCAL_SYNTHESIS',
+                summary: 'AI analysis timed out. Displaying local diagnostic summary based on raw telemetry.',
+                issues: localIssues
+            };
 
             const entry = `${new Date().toISOString()} - qaAgent - ${e.message}\n`;
             fs.appendFileSync(LOG_FILE, entry);
@@ -141,17 +137,14 @@ class QAAgent {
     }
 }
 
-const runAgent = async (reportId, prevReportId = null) => {
-    const report = await ScanReport.findById(reportId);
-    if (!report) return;
+const runAgent = async (reportId, prevReportId = null, currentReport = null, previousReport = null) => {
+    const report = currentReport || await ScanReport.findById(reportId);
+    if (!report) return null;
     
-    let previousReport = null;
-    if (prevReportId) {
-        previousReport = await ScanReport.findById(prevReportId);
-    }
+    const prev = previousReport || (prevReportId ? await ScanReport.findById(prevReportId) : null);
 
     const agent = new QAAgent(reportId);
-    await agent.analyzeResults(report, previousReport);
+    return await agent.analyzeResults(report, prev);
 };
 
 module.exports = { runAgent };
