@@ -40,6 +40,7 @@ class ChatAgent {
             if (msg.includes("security issue") || msg.includes("vulnerability") || msg.includes("security")) return `There are **${reportData.securityIssues?.length || 0}** security vulnerabilities detected.`;
             if (msg.includes("accessibility")) return `I found **${reportData.accessibilityIssues?.length || 0}** accessibility violations.`;
             if (msg.includes("ui") || msg.includes("ux") || msg.includes("layout")) return `The UI analysis detected **${(reportData.uiIssues?.length || 0) + (reportData.responsiveIssues?.length || 0)}** design inconsistencies.`;
+            if (msg.includes("network") || msg.includes("api") || msg.includes("http")) return `There are **${reportData.networkLogs?.length || 0}** network failures captured in this audit.`;
             if (msg.includes("console") || msg.includes("error")) return `I detected **${reportData.consoleErrors?.length || 0}** active console errors in this scan.`;
         }
 

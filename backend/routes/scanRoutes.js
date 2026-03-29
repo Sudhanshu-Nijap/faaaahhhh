@@ -4,11 +4,14 @@ const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 const ScanReport = require('../models/ScanReport');
+const Job = require('../models/Job');
 const crawler = require('../services/crawler');
 const qaScanner = require('../services/qaScanner');
 const qaAgent = require('../services/qaAgent');
 const reportExporter = require('../services/reportExporter');
 const scanEngine = require('../services/scanEngine');
+const discordService = require('../services/discordService');
+const axios = require('axios');
 
 // Global registry of tactical workers for lifecycle control
 const activeWorkers = new Map();
@@ -301,6 +304,10 @@ async function startScan(baseUrl, userId, force = false, chaosIntensity = 'stand
         userId,
         status: 'completed',
     }).sort({ createdAt: -1 });
+    
+    // Check if the trigger request provided a callbackUrl (handled via startScan call site or context)
+    // For now we rely on the report creation to handle it via direct Job triggering
+
 
     const report = new ScanReport({ 
         url: baseUrl, 
@@ -375,10 +382,57 @@ async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = f
     });
 
     worker.on('exit', (code) => {
-        console.log(`[Main]: Tactical Worker exited with code ${code}`);
         activeWorkers.delete(reportId.toString());
+        
+        // ── SYNC JOB LIFECYCLE ───────────────────────────────────────
+        ScanReport.findById(reportId).then(async report => {
+            if (report && report.jobId) {
+                const job = await Job.findById(report.jobId);
+                if (job) {
+                    if (code === 0) {
+                        if (job.mode === 'one-time') {
+                            job.status = 'completed';
+                            job.isActive = false;
+                        } else {
+                            job.status = 'pending'; // Ready for next cycle
+                        }
+                    } else {
+                        job.status = 'failed';
+                    }
+                    await job.save();
+
+                    // ── SOCKET EMISSION ──────────────────────────────────────
+                    if (global.io) {
+                        global.io.emit('job-sync', { 
+                            jobId: job._id.toString(), 
+                            status: job.status,
+                            isActive: job.isActive,
+                            lastRun: job.lastRun
+                        });
+                    }
+
+                    // ── DISCORD BROADCAST (Scheduled) ────────────────────────
+                    console.log(`[Main]: Initiating automated Discord dispatch for Job: ${job._id}`);
+                    discordService.dispatchReport(reportId).catch(e => {
+                        console.error(`[Main Discord Failure]: ${e.message}`);
+                    });
+                }
+            }
+
+            if (code === 0 && report && report.callbackUrl) {
+                console.log(`[Main]: Despatching tactical callback to n8n: ${report.callbackUrl}`);
+                axios.post(report.callbackUrl, {
+                    event: 'scan_completed',
+                    reportId: report._id,
+                    url: report.url,
+                    healthScore: report.healthScore,
+                    summary: report.aiInsights?.summary,
+                    timestamp: new Date().toISOString()
+                }).catch(e => console.error(`[Callback Failure]: ${e.message}`));
+            }
+        });
+
         if (code === 0 && global.io) {
-            // Emit completed event so the frontend ChatInterface refreshes messages
             global.io.to(reportId.toString()).emit('scan-progress', {
                 reportId: reportId.toString(),
                 chatId: chatId ? chatId.toString() : null,
@@ -403,6 +457,66 @@ router.post('/learning/ask', async (req, res) => {
     } catch (e) {
         console.error('[LearningHub Error]:', e.message);
         res.status(500).json({ error: 'Neural substrate consult failed.' });
+    }
+});
+
+// ── NEURAL IDE INTEGRATION (TACTICAL MERGE) ───────────────────────────────────
+const fileScanner = require('../services/fileScanner');
+const scanExecutor = require('../services/scanExecutor');
+const patchApplier = require('../services/patchApplier');
+
+router.post('/debug/run', async (req, res) => {
+    const { folderPath } = req.body;
+    if (!folderPath) return res.status(400).json({ error: 'Substrate path required.' });
+
+    try {
+        const filesToScan = await fileScanner.scanDirectory(folderPath);
+        if (filesToScan.length === 0) {
+            return res.json({ status: 'error', error: 'No source files detected.', files: [] });
+        }
+        const auditPool = filesToScan.slice(0, 15);
+        const results = [];
+        for (const file of auditPool) {
+            try {
+                const auditResult = await scanExecutor.processFile(file);
+                results.push({ ...auditResult, path: file.path });
+            } catch (err) {
+                results.push({ file: file.name, status: 'error', message: err.message, path: file.path });
+            }
+        }
+        res.json({ status: 'success', files: results });
+    } catch (err) {
+        res.status(500).json({ error: 'Neural Scan Fault: ' + err.message });
+    }
+});
+
+router.post('/debug/patch', async (req, res) => {
+    const { filePath, patch } = req.body;
+    try {
+        const result = await patchApplier.applyPatch(filePath, patch);
+        res.json({ status: 'deployed', ...result });
+    } catch (err) {
+        res.status(500).json({ error: 'Deployment Fault: ' + err.message });
+    }
+});
+
+router.post('/debug/deploy-all', async (req, res) => {
+    const { filePath, patches } = req.body;
+    try {
+        const result = await patchApplier.deployAllPatches(filePath, patches);
+        res.json({ status: 'deployed_batch', ...result });
+    } catch (err) {
+        res.status(500).json({ error: 'Batch Deployment Fault: ' + err.message });
+    }
+});
+
+router.post('/debug/upload', async (req, res) => {
+    const { fileName, content } = req.body;
+    try {
+        const result = await scanExecutor.processFile({ name: fileName, path: 'memory://'+fileName, isMemory: true, content });
+        res.json({ status: 'success', files: [result] });
+    } catch (err) {
+        res.status(500).json({ error: 'Neural Upload Fault: ' + err.message });
     }
 });
 

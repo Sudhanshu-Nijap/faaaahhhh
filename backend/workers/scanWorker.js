@@ -21,6 +21,35 @@ mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('[Worker]: Connected to Tactical Database'))
     .catch(err => console.error('[Worker]: DB Error:', err));
 
+// --- 4. Tactical Event Substrate ---
+let mainChatMessageDispatcher = null;
+const earlyInsightQueue = [];
+
+// Fallback: In-built message persistence if service is not yet ready
+const persistMessageLocally = async (chatId, type, content, scanReportId, reportSummary) => {
+    if (!chatId) return null;
+    try {
+        const msg = await Message.create({ chatId, type, content, scanReportId, reportSummary });
+        await Chat.findByIdAndUpdate(chatId, { lastMessageAt: new Date() });
+        return msg;
+    } catch (e) {
+        console.warn('[Worker]: Local persistence failed:', e.message);
+        return null;
+    }
+};
+
+const safeMessageUplink = async (chatId, type, content, scanReportId, reportSummary) => {
+    if (mainChatMessageDispatcher) {
+        return await mainChatMessageDispatcher(type, content, scanReportId, reportSummary);
+    }
+    
+    // Dispatcher not ready (e.g. still requiring modules) -> Persist and queue for sync
+    console.log('[Worker]: Dispatcher not ready. Persisting early insight locally...');
+    const msg = await persistMessageLocally(chatId, type, content, scanReportId, reportSummary);
+    if (msg) earlyInsightQueue.push(msg);
+    return msg;
+};
+
 const calculateReportHealth = (report) => {
     if (!report) return 0;
     
@@ -33,105 +62,84 @@ const calculateReportHealth = (report) => {
         accessibility: report.accessibilityIssues?.length || 0
     };
     
-    // Higher constant: make it harder to hit 0
     const rawDeduction = Object.keys(weights).reduce((acc, key) => acc + (counts[key] * weights[key] || 0), 0);
-    const decayConstant = 400; // Much more lenient for full audits
+    const decayConstant = 400; 
     const scaledScore = 100 * Math.exp(-rawDeduction / decayConstant);
-    const score = Math.max(1, Math.round(scaledScore)); // Never 0 if completed
+    const score = Math.max(1, Math.round(scaledScore));
     
-    console.log(`[Scoring]: ${report.url} -> RawDeduction: ${rawDeduction}, Score: ${score}% (Method: EXP_DECAY_400)`);
+    console.log(`[Scoring]: ${report.url} -> RawDeduction: ${rawDeduction}, Score: ${score}%`);
     return score;
 };
 
 // 5. Orchestration Pipeline
 async function runMasterOrchestrator(data) {
     const { reportId, baseUrl, tests, scope, chatId } = data;
-    const { Worker } = require('worker_threads');
-    const path = require('path');
-
-    // Helper: post a message to the chat thread
-    const postChatMessage = async (type, content, scanReportId, reportSummary) => {
-        if (!chatId) return null;
-        try {
-            const msg = await Message.create({ chatId, type, content, scanReportId, reportSummary });
-            await Chat.findByIdAndUpdate(chatId, { lastMessageAt: new Date() });
-            console.log(`[MasterWorker]: Posted chat message type=${type} to chatId=${chatId}`);
-            return msg;
-        } catch (e) {
-            console.warn('[MasterWorker]: Could not post chat message:', e.message);
-            return null;
-        }
-    };
+    
+    // Initialize primary dispatcher
+    mainChatMessageDispatcher = persistMessageLocally;
+    console.log('[MasterWorker]: Neural Insight Substrate Initialized.');
 
     try {
-        console.log(`[MasterWorker]: Orchestrating scan for ${baseUrl}`);
+        console.log(`[MasterWorker]: Orchestrating tactical scan for ${baseUrl}`);
 
         const emitProgress = (percent, stage) => {
-            parentPort.postMessage({ type: 'progress', percent, stage });
+            if (parentPort) parentPort.postMessage({ type: 'progress', percent, stage });
         };
 
-        // ... STAGE 1, 2, 3, 4 logic ... (same)
-        // (Assuming these stay the same, but let me re-write the stages to be safe and clean)
-        
-        // --- STAGES 1 & 2: Inline Neural Audit Layers (Ultra-Speed) ---
+        // --- STAGE 1: Infrastructure Discovery (Vite/Playwright) ---
         emitProgress(5, 'Engaging Integrated Audit Core...');
         
         await Promise.all([
-            // Playwright Diagnostic Layer (Inline)
             (async () => {
                 const activeSuite = Array.isArray(tests) ? tests.filter(t => ['console', 'network', 'ui', 'links', 'forms'].includes(t)) : [];
                 if (scope === 'single') {
-                    await scanEngine.runSinglePageScan(reportId, baseUrl, activeSuite, (p, s) => emitProgress(5 + Math.round(p * 0.6), s));
+                    await scanEngine.runSinglePageScan(reportId, baseUrl, activeSuite, (p, s) => emitProgress(5 + Math.round(p * 0.45), s));
                 } else {
-                    await scanEngine.runTargetedCrawlScan(reportId, baseUrl, activeSuite, (p, s) => emitProgress(5 + Math.round(p * 0.6), s));
+                    await scanEngine.runTargetedCrawlScan(reportId, baseUrl, activeSuite, (p, s) => emitProgress(5 + Math.round(p * 0.45), s));
                 }
-                
-                // --- Early Insight Protocol (Immediate delivery) ---
+            })(),
+            (async () => {
+                // Post early insight using the safe uplink
                 try {
-                    const partialReport = await ScanReport.findById(reportId);
-                    if (partialReport && chatId) {
-                        const insightSummary = {
-                            status: 'partial',
-                            healthScore: calculateReportHealth(partialReport),
-                            stats: {
-                                brokenLinks: partialReport.brokenLinks?.length || 0,
-                                consoleErrors: partialReport.consoleErrors?.length || 0,
-                                networkIssues: partialReport.networkLogs?.length || 0
-                            }
-                        };
-                        const earlyMsg = await postChatMessage('report', `Early Diagnostic Insight for ${baseUrl}`, reportId, insightSummary);
-                        if (earlyMsg) {
-                            parentPort.postMessage({ type: 'new-message', message: earlyMsg.toObject() });
-                        }
+                    const insightSummary = "Sentinel AI is analyzing structural integrity and network protocols...";
+                    const earlyMsg = await safeMessageUplink(chatId, 'report', `Early Diagnostic Insight for ${baseUrl}`, reportId, insightSummary);
+                    if (earlyMsg && parentPort) {
+                        parentPort.postMessage({ type: 'new-message', message: earlyMsg.toObject() });
                     }
                 } catch (e) {
                     console.warn('[MasterWorker]: Early Insight delivery issue:', e.message);
                 }
-            })(),
-
-            // Lighthouse Performance Audit (Inline)
-            (async () => {
-                const runIh = tests.includes('lighthouse') || tests.includes('performance') || tests.includes('accessibility');
-                if (!runIh) return;
-
-                emitProgress(60, 'Engaging Dedicated Lighthouse Engine...');
-                const dedicatedData = await qaScanner.runDedicatedScan(baseUrl).catch(err => {
-                    console.error(`[MasterWorker]: Inline Lighthouse Audit FAILED: ${err.message}`);
-                    return null;
-                });
-
-                if (dedicatedData && dedicatedData.scores?.performance >= 0) {
-                    await ScanReport.findByIdAndUpdate(reportId, {
-                        $set: { lighthouseScores: dedicatedData.scores },
-                        $push: { accessibilityIssues: { $each: dedicatedData.accessibilityIssues || [] } }
-                    });
-                }
-                emitProgress(90, 'Lighthouse Synthesis Complete.');
             })()
         ]);
 
+        emitProgress(50, 'Infrastructure Audit Phase Complete.');
+
+        // --- STAGE 2: Quality Matrix Audit (Lighthouse) ---
+        // RUN SEQUENTIALLY TO AVOID CHROMIUM CONFLICTS ON WINDOWS
+        const runIh = tests.includes('lighthouse') || tests.includes('performance') || tests.includes('accessibility');
+        if (runIh) {
+            emitProgress(60, 'Engaging Dedicated Lighthouse Engine...');
+            const dedicatedData = await qaScanner.runDedicatedScan(baseUrl).catch(err => {
+                console.error(`[MasterWorker]: Dedicated Lighthouse Audit FAILED: ${err.message}`);
+                return null;
+            });
+
+            if (dedicatedData && (dedicatedData.scores?.performance > 0 || dedicatedData.scores?.seo > 0 || dedicatedData.scores?.accessibility > 0)) {
+                console.log(`[MasterWorker]: Syncing Lighthouse Scores for ${baseUrl}`);
+                await ScanReport.findByIdAndUpdate(reportId, {
+                    $set: { lighthouseScores: dedicatedData.scores },
+                    $push: { accessibilityIssues: { $each: dedicatedData.accessibilityIssues || [] } }
+                });
+                emitProgress(90, 'Lighthouse Telemetry Synchronized.');
+            } else {
+                console.warn(`[MasterWorker]: Lighthouse returned 0 or failed for ${baseUrl}. Preserving existing metrics.`);
+            }
+        } else {
+            emitProgress(90, 'Skipping Lighthouse (User specific request).');
+        }
+
         // --- STAGE 3: AI Synthesis (qaAgent) ---
-        emitProgress(90, 'Running Final AI Analysis...');
+        emitProgress(92, 'Syncing Final AI Analysis...');
         const { prevReportId } = data;
         await qaAgent.runAgent(reportId, prevReportId);
 
@@ -176,7 +184,7 @@ async function runMasterOrchestrator(data) {
                     impact: comparison.stats.impact
                 } : null
             };
-            const chatMsg = await postChatMessage(msgType, baseUrl, reportId, reportSummary);
+            const chatMsg = await safeMessageUplink(chatId, msgType, baseUrl, reportId, reportSummary);
             if (chatMsg) {
                 // Fix: Convert Mongoose document to plain object for thread cloning
                 parentPort.postMessage({ type: 'new-message', message: chatMsg.toObject() });

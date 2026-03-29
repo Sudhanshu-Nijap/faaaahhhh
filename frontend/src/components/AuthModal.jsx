@@ -40,7 +40,7 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
 
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
-      const response = await axios.post(`http://localhost:5000${endpoint}`, {
+      const response = await axios.post(`http://localhost:5005${endpoint}`, {
         email,
         password,
         username: isLogin ? undefined : username

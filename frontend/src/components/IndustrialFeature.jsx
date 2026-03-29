@@ -66,7 +66,7 @@ const IndustrialFeature = () => {
             </h2>
             
             <p className="text-[var(--eu-text-muted)] text-sm leading-relaxed mb-10 font-outfit uppercase tracking-widest opacity-80">
-              Autonomous SOC integration leveraging Gemini 2.5 architecture. Transform raw vulnerability data into tactical summaries, multi-channel alerts, and zero-click remediation workflows.
+              Autonomous SOC integration leveraging Sentinel AI architecture. Transform raw vulnerability data into tactical summaries, multi-channel alerts, and zero-click remediation workflows.
             </p>
 
             <div className="grid grid-cols-2 gap-4">

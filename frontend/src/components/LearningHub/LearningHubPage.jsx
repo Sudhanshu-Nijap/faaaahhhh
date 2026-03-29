@@ -57,7 +57,7 @@ const LearningHubPage = () => {
     setIsAiLoading(true);
     setAiResponse(null);
     try {
-      const { data } = await axios.post('http://localhost:5000/api/learning/ask', { question: aiInput });
+      const { data } = await axios.post('http://localhost:5005/api/learning/ask', { question: aiInput });
       setAiResponse(data);
       setAiInput('');
     } catch (e) {

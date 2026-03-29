@@ -3,13 +3,12 @@ import { motion } from 'framer-motion';
 import { 
   Shield, 
   Cpu, 
-  Lock, 
   Search, 
   Terminal, 
   Activity, 
   Zap, 
   Globe,
-  Database,
+  Calendar,
   MessageSquare
 } from 'lucide-react';
 
@@ -22,21 +21,21 @@ const CAPABILITIES = [
   },
   {
     icon: <Cpu size={22} />,
-    title: "Gemini 2.5 Analysis",
+    title: "Sentinel AI Analysis",
     desc: "Advanced AI reasoning categorizes findings into risk-stratified architectural reports.",
-    tag: "AI_GEMINI"
+    tag: "AI_SENTINEL"
   },
   {
-    icon: <Lock size={22} />,
-    title: "Secure Authentication",
-    desc: "JWT-protected access ensures your diagnostic data remains within your operational perimeter.",
-    tag: "AUTH_PROT"
+    icon: <Terminal size={22} />,
+    title: "Neural Debug Console",
+    desc: "A full-spectrum IDE environment for real-time code patching and automated remediation synthesis.",
+    tag: "DEBUG_IDE"
   },
   {
-    icon: <Database size={22} />,
-    title: "Diagnostic Archives",
-    desc: "Persistent storage of all historical scans for longitudinal security tracking.",
-    tag: "DB_STORE"
+    icon: <Calendar size={22} />,
+    title: "Neural Scheduler",
+    desc: "Autonomous CRON-based diagnostic sweeps. Set your infrastructure for periodic, hands-off security monitoring.",
+    tag: "AUTO_CRON"
   },
   {
     icon: <Zap size={22} />,

@@ -4,8 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageSquare, Plus, Activity, Globe, Pin, PinOff,
   Search, MoreVertical, Trash2, Edit2, LogOut, FileText,
-  RefreshCw, Clock, ChevronRight
+  RefreshCw, Clock, ChevronRight, Calendar, Brain, Cpu, Terminal
 } from 'lucide-react';
+
 
 // ── Date grouping helper ───────────────────────────────────────────────────────
 const getDateGroup = (dateStr) => {
@@ -38,11 +39,14 @@ const ChatSidebar = ({
   onToggleTheme,
   theme,
   onGroupChart,
+  onScheduleClick,
   onDeleteChat,
   confirm,
   prompt: promptFn,
-  setAlert
+  setAlert,
+  onViewChange
 }) => {
+
   const [searchQuery, setSearchQuery] = useState('');
   const [chats, setChats] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -58,7 +62,7 @@ const ChatSidebar = ({
     } else if (userId) {
       import('axios').then(async a => {
         try {
-          const { data } = await a.default.get(`http://localhost:5000/api/auth/profile/${userId}`);
+          const { data } = await a.default.get(`http://localhost:5005/api/auth/profile/${userId}`);
           const d = { username: data.username, email: data.email };
           setUserData(d);
           localStorage.setItem('userData', JSON.stringify(d));
@@ -72,7 +76,7 @@ const ChatSidebar = ({
     if (!userId) { setLoading(false); return; }
     setLoading(true);
     try {
-      const { data } = await import('axios').then(a => a.default.get(`http://localhost:5000/api/chat/threads?userId=${userId}`));
+      const { data } = await import('axios').then(a => a.default.get(`http://localhost:5005/api/chat/threads?userId=${userId}`));
       const sorted = data.sort((a, b) => {
         if (a.isPinned && !b.isPinned) return -1;
         if (!a.isPinned && b.isPinned) return 1;
@@ -97,7 +101,7 @@ const ChatSidebar = ({
     });
     if (!ok) return;
     try {
-      await import('axios').then(a => a.default.delete(`http://localhost:5000/api/chat/thread/${id}`));
+      await import('axios').then(a => a.default.delete(`http://localhost:5005/api/chat/thread/${id}`));
       setAlert({ type: 'success', message: 'Thread deleted.' });
       if (onDeleteChat) onDeleteChat(id);
       loadChats();
@@ -108,7 +112,7 @@ const ChatSidebar = ({
 
   const handlePin = async (id) => {
     try {
-      await import('axios').then(a => a.default.patch(`http://localhost:5000/api/chat/thread/${id}/pin`));
+      await import('axios').then(a => a.default.patch(`http://localhost:5005/api/chat/thread/${id}/pin`));
       loadChats();
     } catch {
       setAlert({ type: 'error', message: 'Pin failed.' });
@@ -119,7 +123,7 @@ const ChatSidebar = ({
     const newName = await promptFn({ title: 'Rename Thread', message: 'New name:', confirmText: 'Rename' });
     if (!newName) return;
     try {
-      await import('axios').then(a => a.default.patch(`http://localhost:5000/api/chat/thread/${id}/rename`, { name: newName }));
+      await import('axios').then(a => a.default.patch(`http://localhost:5005/api/chat/thread/${id}/rename`, { name: newName }));
       loadChats();
     } catch {
       setAlert({ type: 'error', message: 'Rename failed.' });
@@ -223,18 +227,15 @@ const ChatSidebar = ({
             <h2 className="text-[11px] font-black uppercase tracking-widest text-[var(--eu-text-main)] opacity-70">QA Threads</h2>
           </div>
           <div className="flex items-center gap-1.5">
-            {onGroupChart && (
-              <button onClick={onGroupChart}
-                className="size-7 bg-[var(--eu-bg-void)]/10 hover:bg-[var(--eu-bg-void)]/20 border border-[var(--eu-glass-border)] rounded-xl flex items-center justify-center text-[var(--eu-text-main)] opacity-40 hover:text-eu-accent transition-all">
-                <Activity size={13} />
-              </button>
-            )}
             <button onClick={onNewSession}
-              className="size-7 bg-[var(--eu-bg-void)]/10 hover:bg-[var(--eu-bg-void)]/20 border border-[var(--eu-glass-border)] rounded-xl flex items-center justify-center text-[var(--eu-text-main)] opacity-40 hover:text-eu-accent transition-all">
+              className="size-7 bg-[var(--eu-bg-void)]/10 hover:bg-[var(--eu-bg-void)]/20 border border-[var(--eu-glass-border)] rounded-xl flex items-center justify-center text-[var(--eu-text-main)] opacity-40 hover:text-eu-accent transition-all"
+              title="New Session"
+            >
               <Plus size={13} />
             </button>
           </div>
         </div>
+
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--eu-text-main)] opacity-30 size-3" />

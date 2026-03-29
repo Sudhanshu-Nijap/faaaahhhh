@@ -20,102 +20,188 @@ process.on('uncaughtException', (err) => {
 });
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = 5005; // TACTICAL PORT DISPLACEMENT (FIX FOR GHOST 404s)
 
+// High-Capacity Data Substrate
 app.use(cors());
-app.use(express.json());
-app.use('/screenshots', express.static(path.join(__dirname, 'screenshots')));
-app.use('/reports', express.static(path.join(__dirname, 'reports')));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Simple request logger
+// Tactical Request Trace Middleware
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    console.log(`[NeuralTrace]: ${req.method} ${req.url} - ${new Date().toISOString()}`);
     next();
 });
 
 // Database Connection
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('MongoDB Connected'))
-    .catch(err => console.error('DB Error:', err));
+    .then(() => console.log('MongoDB Neural Cluster Connected (Port 5005)'))
+    .catch(err => console.error('DB Tactical Fault:', err));
+
+// ── ABSOLUTE NEURAL GATEWAY (V3 FINAL) ──────────────────────────────────────
+const fileScanner = require('./services/fileScanner');
+const scanExecutor = require('./services/scanExecutor');
+const patchApplier = require('./services/patchApplier');
+const ScanReport = require('./models/ScanReport');
+
+// ── Layer 1: Global Health & Verified Dashboards ──
+app.get('/status', (req, res) => res.json({ status: 'SENTINEL_SYSTEM_ALIVE', port: 5005, layer: 'Absolute_Neural_Gateway_V3' }));
+
+app.get('/api/reports', async (req, res) => {
+    try {
+        const { userId } = req.query;
+        const reports = await ScanReport.find(userId ? { userId } : {}).sort({ createdAt: -1 });
+        res.json(reports);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/scan/active/:userId', async (req, res) => {
+    try {
+        const active = await ScanReport.findOne({ userId: req.params.userId, status: 'in-progress' }).sort({ createdAt: -1 });
+        if (!active) return res.json({ status: 'idle' });
+        res.json(active);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Layer 2: Neural IDE Deployment Pipeline (High Priority) ──
+app.post('/neural-debug-engine-v1-deploy-all', async (req, res) => {
+    const targetPath = req.body.filePath || req.body.path;
+    const { patches } = req.body;
+    console.log(`[NeuralTrace]: DeployAll Payload: targetPath=${targetPath}, patchesCount=${patches?.length || 0}`);
+    
+    try { 
+        if (!targetPath || !patches) throw new Error(`Substrate incomplete: path=${targetPath}, patches=${!!patches}`);
+        
+        // --- Virtual Substrate Intercept ---
+        if (targetPath?.toString().startsWith('memory://')) {
+            return res.json({ status: 'success', virtual: true, message: 'Neural memory substrate updated.' });
+        }
+
+        const normalized = path.isAbsolute(targetPath) ? targetPath : path.resolve(process.cwd(), targetPath);
+        const result = await patchApplier.deployAllPatches(normalized, patches);
+        res.json({ status: 'success', ...result }); 
+    } catch (e) { 
+        console.error('[DeployAll Fault]:', e.message);
+        res.status(500).json({ status: 'error', error: e.message }); 
+    }
+});
+
+app.post('/neural-debug-engine-v1-patch', async (req, res) => {
+    const targetPath = req.body.filePath || req.body.path;
+    const { patch } = req.body;
+    console.log(`[NeuralTrace]: SinglePatch Payload: targetPath=${targetPath}, patchLine=${patch?.line}`);
+    
+    try { 
+        if (!targetPath || !patch) throw new Error(`Substrate incomplete: path=${targetPath}, patch=${!!patch}`);
+
+        // --- Virtual Substrate Intercept ---
+        if (targetPath?.toString().startsWith('memory://')) {
+            return res.json({ status: 'deployed', virtual: true, message: 'Neural memory patch applied.' });
+        }
+        
+        const normalized = path.isAbsolute(targetPath) ? targetPath : path.resolve(process.cwd(), targetPath);
+        const result = await patchApplier.applyPatch(normalized, patch);
+        res.json({ status: 'deployed', ...result }); 
+    } catch (e) { 
+        console.error('[Patch Fault]:', e.message);
+        res.status(500).json({ status: 'error', error: e.message }); 
+    }
+});
+
+app.post('/neural-debug-engine-v1-run', async (req, res) => {
+    const { folderPath } = req.body;
+    try {
+        if (!folderPath) throw new Error('Folder path required.');
+        console.log(`[NeuralScan]: Initializing audit for substrate: ${folderPath}`);
+        
+        const files = await fileScanner.scanDirectory(folderPath);
+        if (!files.length) return res.json({ status: 'error', error: 'No source files detected.' });
+        
+        const results = [];
+        for (const file of files.slice(0, 15)) {
+            try { 
+                const audit = await scanExecutor.processFile(file);
+                results.push({ ...audit, path: file.path, name: file.name }); 
+            } catch(_) {}
+        }
+        res.json({ status: 'success', files: results });
+    } catch (e) { 
+        console.error('[Run Fault]:', e);
+        res.status(500).json({ error: e.message }); 
+    }
+});
+
+app.post('/neural-debug-engine-v1-batch-upload', async (req, res) => {
+    const { files } = req.body;
+    if (!files || !Array.isArray(files)) return res.status(400).json({ error: 'Batch required.' });
+    try {
+        const results = [];
+        for (const file of files.slice(0, 25)) {
+            try { 
+                const virtualFile = { 
+                    name: file.name, 
+                    path: 'memory://' + file.name, 
+                    isMemory: true, 
+                    content: file.content 
+                };
+                const audit = await scanExecutor.processFile(virtualFile);
+                results.push({ ...audit, path: virtualFile.path, name: virtualFile.name }); 
+            } catch(_) {}
+        }
+        res.json({ status: 'success', files: results });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/neural-debug-engine-v1-upload', async (req, res) => {
+    const { fileName, content } = req.body;
+    try {
+        const result = await scanExecutor.processFile({ 
+            name: fileName, 
+            path: 'memory://'+fileName, 
+            isMemory: true, 
+            content 
+        });
+        res.json({ status: 'success', files: [result] });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.use('/screenshots', express.static(path.join(__dirname, 'screenshots')));
+
+// ── Priority 2: Infrastructure Layers (Unified Neural Routing) ──
 
 // Routes
 const scanRoutes = require('./routes/scanRoutes');
 const authRoutes = require('./routes/authRoutes');
 const chatRoutes = require('./routes/chatRoutes');
+const jobRoutes = require('./routes/jobRoutes');
+const schedulerService = require('./services/schedulerService');
+
+// Priority 2: Infrastructure Layers (Unified Neural Routing)
+const { router: scanRouter } = require('./routes/scanRoutes');
+app.use('/api', scanRouter); 
+app.use('/api/auth', authRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/scheduling', jobRoutes);
+
+// Tactical Pulse Feedback for Verification
+app.get('/api/debug/ping', (req, res) => res.json({ status: 'Neural Uplink Stable', timestamp: new Date() }));
 
 // --- CRITICAL DISPATCH OVERRIDE (MOUNTED FIRST TO PREVENT 404) ---
 app.post('/api/pulse', async (req, res) => {
     try {
         const { reportId } = req.body;
-        const ScanReport = require('./models/ScanReport');
-        const reportExporter = require('./services/reportExporter');
-        const fs = require('fs');
-
-        const report = await ScanReport.findById(reportId);
-        if (!report) return res.status(404).json({ error: 'Report not found' });
+        const discordService = require('./services/discordService');
+        const result = await discordService.dispatchReport(reportId);
         
-        const targetWebhook = process.env.DISCORD_WEBHOOK_URL;
-        if (!targetWebhook) return res.status(400).json({ error: 'Webhook missing' });
-
-        // 1. Generate Latest PDF Snapshot
-        console.log(`[Pulse]: Generating PDF for ${reportId}...`);
-        const pdfUrl = await reportExporter.generatePDF(reportId);
-        const pdfPath = path.join(__dirname, pdfUrl);
-
-        if (!fs.existsSync(pdfPath)) {
-            throw new Error('PDF Generation failed: File not found.');
+        if (result) {
+            res.json({ message: 'Tactical dispatch broadcast successful.' });
+        } else {
+            res.status(500).json({ error: 'Pulse transmission failed.' });
         }
-
-        const hostname = new URL(report.url).hostname;
-
-        // 2. Prepare Webhook Payload
-        const embed = {
-            title: `🛡️ Sentinel AI Dispatch: ${hostname}`,
-            url: `http://localhost:5173/report/${report._id}`,
-            description: `Neural analysis complete for **${report.url}**`,
-            color: 0xFF007F,
-            fields: [
-                { name: '❤️ Health Score', value: `${report.healthScore || 'N/A'}`, inline: true },
-                { name: '📄 Nodes Scanned', value: `${report.pagesCrawled || 1}`, inline: true },
-                { name: '🚨 Findings', value: `${(report.brokenLinks?.length || 0) + (report.consoleErrors?.length || 0)} Anomalies`, inline: true }
-            ],
-            footer: { text: 'Sentinel Pulse Pipeline' },
-            timestamp: new Date()
-        };
-
-        // 3. Dispatch Multipart Payload via Native Fetch (Node v22+)
-        const { Blob } = require('buffer');
-        const formData = new FormData();
-        formData.append('payload_json', JSON.stringify({
-            content: `⚡ **Dispatch Received:** Tactical report for **${hostname}** ready for review.\n🔗 [Direct Link](http://localhost:5173/report/${report._id})`,
-            embeds: [embed]
-        }));
-        
-        const pdfBuffer = fs.readFileSync(pdfPath);
-        formData.append('file', new Blob([pdfBuffer], { type: 'application/pdf' }), `Sentinel-Report-${hostname}.pdf`);
-
-        console.log(`[Pulse]: Dispatching to Discord...`);
-        const response = await fetch(targetWebhook, {
-            method: 'POST',
-            body: formData
-        });
-
-        if (!response.ok) {
-            const errBody = await response.text();
-            throw new Error(`Discord API Rejected Dispatch: ${response.status} ${errBody}`);
-        }
-
-        res.json({ message: 'Neural Pulse & PDF Dispatched Successfully.' });
-    } catch (e) {
-        console.error('[Pulse Critical Failure]:', e.message);
-        res.status(500).json({ error: e.message });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
-
-app.use('/api', scanRoutes.router);
-app.use('/api/auth', authRoutes);
-app.use('/api/chat', chatRoutes);
-
 
 const server = http.createServer(app);
 
@@ -145,8 +231,10 @@ io.on('connection', (socket) => {
 
 // ── Smart Port Recovery ──────────────────────────────────────────────────────
 const startServer = () => {
-    server.listen(PORT, () => {
+    server.listen(PORT, async () => {
         console.log(`Sentinel Server Active on Port ${PORT}`);
+        // Initialize tactical scheduler substrate
+        await schedulerService.init();
     }).on('error', async (e) => {
         if (e.code === 'EADDRINUSE') {
             console.error(`[Fatal]: Port ${PORT} is busy. Executing tactical cleanup...`);

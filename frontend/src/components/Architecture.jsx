@@ -62,7 +62,7 @@ const Architecture = () => {
           <div className="flex items-center gap-8 w-full justify-center">
              <Node icon={Globe} title="Target Node" desc="Public or Private tactical URL input perimeter." delay={0.1} />
              <Connector delay={0.3} />
-             <Node icon={Cpu} title="Gemini 2.5 Node" desc="Neural reasoning cluster for vulnerability synthesis." delay={0.5} />
+             <Node icon={Cpu} title="Sentinel 3.0 Node" desc="Neural reasoning cluster for vulnerability synthesis." delay={0.5} />
              <Connector delay={0.7} />
              <Node icon={Database} title="Lattice Storage" desc="Encrypted persistence for diagnostic archives." delay={0.9} color="primary" />
           </div>
@@ -81,7 +81,7 @@ const Architecture = () => {
         <div className="md:hidden flex flex-col gap-6 items-center">
              <Node icon={Globe} title="Target Node" desc="tactical URL input." delay={0.1} />
              <Connector delay={0.2} rotated={true} />
-             <Node icon={Cpu} title="Gemini 2.5 Node" desc="Neural reasoning." delay={0.3} />
+             <Node icon={Cpu} title="Sentinel 3.0 Node" desc="Neural reasoning." delay={0.3} />
              <Connector delay={0.4} rotated={true} />
              <Node icon={Layout} title="The Neural Hub" desc="Operational Interface." delay={0.5} />
         </div>

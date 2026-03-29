@@ -17,7 +17,7 @@ const FloatingAIWidget = () => {
         setIsLoading(true);
         setResponse(null);
         try {
-            const { data } = await axios.post('http://localhost:5000/api/learning/ask', { question: input });
+            const { data } = await axios.post('http://localhost:5005/api/learning/ask', { question: input });
             setResponse(data);
             // Don't clear input immediately so they see what they asked
         } catch (error) {

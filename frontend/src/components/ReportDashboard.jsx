@@ -17,8 +17,10 @@ import {
   Edit2,
   Pin,
   Archive,
-  MoreVertical
+  MoreVertical,
+  Calendar
 } from 'lucide-react';
+
 
 const MenuButton = ({ icon, label, onClick, danger, isDark }) => {
   const [hovered, setHovered] = React.useState(false);
@@ -56,7 +58,8 @@ const MenuButton = ({ icon, label, onClick, danger, isDark }) => {
   );
 };
 
-const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme, onDeleteReport, confirm, prompt, setAlert }) => {
+const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme, onDeleteReport, onScheduleReport, confirm, prompt, setAlert }) => {
+
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -67,7 +70,7 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme, onDel
     if (showLoading) setLoading(true);
     try {
       const userId = localStorage.getItem('userId');
-      const response = await axios.get(`http://localhost:5000/api/reports?userId=${userId}`);
+      const response = await axios.get(`http://localhost:5005/api/reports?userId=${userId}`);
       setReports(response.data);
     } catch (error) {
       console.error('Failed to fetch reports', error);
@@ -78,7 +81,7 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme, onDel
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`http://localhost:5000/api/report/${id}`);
+      await axios.delete(`http://localhost:5005/api/report/${id}`);
       setReports(reports.filter(r => r._id !== id));
       if (onDeleteReport) onDeleteReport(id);
     } catch (error) {
@@ -89,7 +92,7 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme, onDel
 
   const handlePin = async (id) => {
     try {
-      const { data } = await axios.patch(`http://localhost:5000/api/report/${id}/pin`);
+      const { data } = await axios.patch(`http://localhost:5005/api/report/${id}/pin`);
       setReports(reports.map(r => r._id === id ? data : r));
     } catch (error) {
       console.error('Failed to toggle pin', error);
@@ -98,7 +101,7 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme, onDel
 
   const handleShare = async (id) => {
     try {
-      const { data } = await axios.patch(`http://localhost:5000/api/report/${id}/share`);
+      const { data } = await axios.patch(`http://localhost:5005/api/report/${id}/share`);
       if (data.url) {
         navigator.clipboard.writeText(data.url);
         alert(`Classroom Uplink Established! Invite codes copied to tactical clipboard.\n\nURL: ${data.url}`);
@@ -117,7 +120,7 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme, onDel
     });
     if (!newName || newName === currentName) return;
     try {
-      const { data } = await axios.patch(`http://localhost:5000/api/report/${id}/rename`, { name: newName });
+      const { data } = await axios.patch(`http://localhost:5005/api/report/${id}/rename`, { name: newName });
       setReports(reports.map(r => r._id === id ? data : r));
     } catch (err) {
       console.error("Rename failed", err);
@@ -126,7 +129,7 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme, onDel
 
   const handleArchive = async (id) => {
     try {
-      const { data } = await axios.patch(`http://localhost:5000/api/report/${id}/archive`);
+      const { data } = await axios.patch(`http://localhost:5005/api/report/${id}/archive`);
       setReports(reports.map(r => r._id === id ? data : r));
     } catch (err) {
       console.error("Archive failed", err);
@@ -177,7 +180,7 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme, onDel
     if (selectedReports.length !== 2) return;
     setComparing(true);
     try {
-      const { data } = await axios.post('http://localhost:5000/api/vision/compare', {
+      const { data } = await axios.post('http://localhost:5005/api/vision/compare', {
         reportId1: selectedReports[0],
         reportId2: selectedReports[1]
       });
@@ -473,6 +476,7 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme, onDel
               >
                 <div style={headerStyle}><span style={headerTextStyle}>Options</span></div>
                 <MenuButton isDark={isDark} icon={<UserPlus size={14} />} label="Start a group chat" onClick={() => { handleShare(activeMenuId); setActiveMenuId(null); }} />
+                <MenuButton isDark={isDark} icon={<Calendar size={14} />} label="Schedule Protocol" onClick={() => { const report = reports.find(r => r._id === activeMenuId); onScheduleReport(report.url); setActiveMenuId(null); }} />
                 <MenuButton isDark={isDark} icon={<Edit2 size={14} />} label="Rename" onClick={() => { const report = reports.find(r => r._id === activeMenuId); handleRename(activeMenuId, report?.customName || new URL(report?.url).hostname); setActiveMenuId(null); }} />
                 <div style={dividerStyle} />
                 <MenuButton isDark={isDark} icon={<Pin size={14} />} label="Pin chat" onClick={() => { handlePin(activeMenuId); setActiveMenuId(null); }} />

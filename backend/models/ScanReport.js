@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const scanReportSchema = new mongoose.Schema({
     url: { type: String, required: true },
     userId: { type: String, required: true },
+    jobId: { type: mongoose.Schema.Types.ObjectId, ref: 'Job' },
+    callbackUrl: { type: String }, // NEW: Store for external scheduler notifications
     scanDate: { type: Date, default: Date.now },
     pagesCrawled: { type: Number, default: 0 },
     status: { type: String, enum: ['pending', 'in-progress', 'completed', 'failed'], default: 'pending' },

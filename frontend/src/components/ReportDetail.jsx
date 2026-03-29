@@ -326,7 +326,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
 
     const fetchReport = async () => {
       try {
-        const response = await axios.get(`http://localhost:5000/api/report/${reportId}`);
+        const response = await axios.get(`http://localhost:5005/api/report/${reportId}`);
         const data = response.data;
         setReport(data);
 
@@ -430,7 +430,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
               });
               if (confirmed) {
                 try {
-                  await axios.delete(`http://localhost:5000/api/report/${reportId}`);
+                  await axios.delete(`http://localhost:5005/api/report/${reportId}`);
                   if (onDeleted) onDeleted();
                   else onBack();
                   setAlert({ type: 'success', message: 'Neural trace purged successfully.' });
@@ -446,8 +446,8 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
           <button
             onClick={async () => {
               try {
-                const res = await axios.get(`http://localhost:5000/api/report/${reportId}/export`);
-                if (res.data.url) window.open(`http://localhost:5000${res.data.url}`, '_blank');
+                const res = await axios.get(`http://localhost:5005/api/report/${reportId}/export`);
+                if (res.data.url) window.open(`http://localhost:5005${res.data.url}`, '_blank');
               } catch (e) { setAlert({ type: 'error', message: 'PDF export protocol failed.' }); }
             }}
             className="flex-none flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-neon text-white"
@@ -459,7 +459,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
             onClick={async () => {
               try {
                 // Sends report to system Discord webhook configured in .env
-                await axios.post('http://localhost:5000/api/pulse', { reportId, type: 'discord' });
+                await axios.post('http://localhost:5005/api/pulse', { reportId, type: 'discord' });
                 setAlert({ type: 'success', message: 'Discord Pulse Dispatched Successfully.' });
               } catch (e) { 
                 setAlert({ type: 'error', message: 'Dispatch Failed: ' + (e.response?.data?.error || 'Uplink Error') }); 
@@ -470,21 +470,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
             Pulse <Terminal size={10} />
           </button>
 
-          <button
-            onClick={async () => {
-              const confirmed = await confirm({
-                title: "Audit Reset",
-                message: `Initiate fresh neural audit for ${new URL(report.url).hostname}? This will bypass all cached signatures.`,
-                confirmText: "Confirm Reset"
-              });
-              if (confirmed) {
-                if (onReScan) onReScan(report.url);
-              }
-            }}
-            className="flex-none flex items-center justify-center gap-2 bg-eu-accent/10 hover:bg-eu-accent text-white border border-eu-accent/30 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-neon"
-          >
-            Re-test <Zap size={10} />
-          </button>
+
 
           <a
             href={report.url} target="_blank" rel="noreferrer"
@@ -495,17 +481,17 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
         </div>
       </div>
 
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-9 gap-4 p-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 p-6">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl transition-all duration-300 group relative border shadow-xl w-full ${activeTab === tab.id
+            className={`flex flex-col items-center justify-center gap-3 p-4 rounded-3xl transition-all duration-300 group relative border shadow-xl w-full aspect-square ${activeTab === tab.id
                 ? 'bg-[var(--eu-bg-card)] border-eu-accent shadow-neon-strong z-20 scale-105'
                 : 'bg-[var(--eu-bg-card)] border-[var(--eu-glass-border)] hover:border-eu-accent/40 z-10'
               }`}
           >
-            <div className={`size-9 rounded-xl flex items-center justify-center transition-all duration-700 ${activeTab === tab.id
+            <div className={`size-10 rounded-2xl flex items-center justify-center transition-all duration-700 ${activeTab === tab.id
                 ? 'bg-eu-accent/10 text-eu-accent scale-110'
                 : 'bg-[var(--eu-bg-void)] text-[var(--eu-text-main)] opacity-40 group-hover:opacity-100 group-hover:scale-105'
               }`}>
@@ -517,7 +503,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
                 {tab.label}
               </p>
               {tab.count !== undefined && (
-                <span className={`text-[11px] font-black font-mono transition-colors ${activeTab === tab.id ? 'text-eu-accent/80' : 'text-primary'
+                <span className={`text-[12px] font-black font-mono transition-colors ${activeTab === tab.id ? 'text-eu-accent' : 'text-primary'
                   }`}>
                   {tab.count < 10 && tab.count > 0 ? `0${tab.count}` : tab.count === 0 ? '00' : tab.count}
                 </span>
@@ -834,7 +820,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
               {(report.screenshots || []).map((s, i) => (
                 <div key={i} className="group glass-euphoria p-3 rounded-2xl space-y-3 border border-[var(--eu-glass-border)] hover:border-eu-accent/30 transition-all duration-700 hover:-translate-y-1 shadow-xl">
                   <div className="aspect-video overflow-hidden rounded-xl bg-[var(--eu-bg-void)]/60 border border-[var(--eu-glass-border)] shadow-inner relative">
-                    <img src={`http://localhost:5000${s.path}`} alt={s.page} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 grayscale group-hover:grayscale-0" />
+                    <img src={`http://localhost:5005${s.path}`} alt={s.page} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 grayscale group-hover:grayscale-0" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-3">
                       <p className="text-[8px] font-black text-white uppercase tracking-widest">{s.page}</p>
                     </div>

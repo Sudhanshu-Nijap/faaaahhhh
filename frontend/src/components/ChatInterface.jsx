@@ -2,13 +2,17 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Send, Bot, User, Shield, Zap, Sparkles, Activity, Globe,
-  RefreshCw, ChevronDown, Check, Loader2, ChevronUp, Lock, Plus
+  RefreshCw, ChevronDown, Check, Loader2, ChevronUp, Lock, Plus,
+  Calendar, Cpu
 } from 'lucide-react';
 import axios from 'axios';
 import io from 'socket.io-client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ScanSummaryCard from './ScanSummaryCard';
+import SchedulingDashboard from './SchedulingDashboard';
+import GlobalIntelligence from './GlobalIntelligence';
+import LearningHubPage from './LearningHub/LearningHubPage';
 
 // ── Date Separator ─────────────────────────────────────────────────────────────
 const DateSeparator = ({ date }) => (
@@ -62,7 +66,7 @@ const PreviousScansDropdown = ({ chatId, onSelect }) => {
 
   useEffect(() => {
     if (!open || !chatId) return;
-    axios.get(`http://localhost:5000/api/chat/thread/${chatId}/scans`)
+    axios.get(`http://localhost:5005/api/chat/thread/${chatId}/scans`)
       .then(r => setScans(r.data))
       .catch(() => {});
   }, [open, chatId]);
@@ -138,7 +142,12 @@ const ChatInterface = ({
   onResetTarget, 
   globalScanProgress,
   pendingMessage,
-  onMessageConsumed 
+  onMessageConsumed,
+  activeView = 'chat',
+  onViewChange,
+  reports = [],
+  setAlert,
+  confirm
 }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -153,7 +162,7 @@ const ChatInterface = ({
 
   // ── Socket Infrastructure ────────────────────────────────────────────────────
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    const socket = io('http://localhost:5005');
     socketRef.current = socket;
 
     socket.on('connect', () => {
@@ -217,7 +226,7 @@ const ChatInterface = ({
 
   const loadMessages = useCallback(async (chatId) => {
     try {
-      const { data } = await axios.get(`http://localhost:5000/api/chat/thread/${chatId}/messages`);
+      const { data } = await axios.get(`http://localhost:5005/api/chat/thread/${chatId}/messages`);
       setMessages(data);
       scrollToBottom();
     } catch (err) {
@@ -229,7 +238,7 @@ const ChatInterface = ({
   useEffect(() => {
     if (activeChatId) {
       setLoading(true);
-      axios.get(`http://localhost:5000/api/chat/threads?userId=${localStorage.getItem('userId')}`)
+      axios.get(`http://localhost:5005/api/chat/threads?userId=${localStorage.getItem('userId')}`)
         .then(r => {
           const chat = r.data.find(c => c._id === activeChatId);
           setChatMeta(chat || null);
@@ -283,10 +292,10 @@ const ChatInterface = ({
 
       setIsTyping(true);
       try {
-        const { data: { chatId } } = await axios.post('http://localhost:5000/api/chat/thread/start', { url: targetUrl, userId });
-        await axios.post(`http://localhost:5000/api/chat/thread/${chatId}/message`, { type: 'user', content: targetUrl });
-        await axios.post(`http://localhost:5000/api/chat/thread/${chatId}/message`, { type: 'system', content: 'Diagnostic Scan Initiated' });
-        const { data: scanData } = await axios.post('http://localhost:5000/api/scan', {
+        const { data: { chatId } } = await axios.post('http://localhost:5005/api/chat/thread/start', { url: targetUrl, userId });
+        await axios.post(`http://localhost:5005/api/chat/thread/${chatId}/message`, { type: 'user', content: targetUrl });
+        await axios.post(`http://localhost:5005/api/chat/thread/${chatId}/message`, { type: 'system', content: 'Diagnostic Scan Initiated' });
+        const { data: scanData } = await axios.post('http://localhost:5005/api/scan', {
           url: targetUrl, userId, force: true, chatId,
           scope: scanParams.scope, mode: scanParams.mode, tests: scanParams.tests
         });
@@ -314,16 +323,16 @@ const ChatInterface = ({
         // Resolve URL — use chatMeta if loaded, otherwise fetch the chat directly
         let targetUrl = chatMeta?.url;
         if (!targetUrl) {
-          const { data: chatData } = await axios.get(`http://localhost:5000/api/chat/threads?userId=${userId}`);
+          const { data: chatData } = await axios.get(`http://localhost:5005/api/chat/threads?userId=${userId}`);
           const found = chatData.find(c => c._id === activeChatId);
           targetUrl = found?.url;
           if (found) setChatMeta(found);
         }
         if (!targetUrl) { setIsTyping(false); return; }
 
-        await axios.post(`http://localhost:5000/api/chat/thread/${activeChatId}/message`, { type: 'user', content: finalInput });
-        await axios.post(`http://localhost:5000/api/chat/thread/${activeChatId}/message`, { type: 'system', content: 'Rescan Initiated' });
-        const { data: scanData } = await axios.post('http://localhost:5000/api/scan', {
+        await axios.post(`http://localhost:5005/api/chat/thread/${activeChatId}/message`, { type: 'user', content: finalInput });
+        await axios.post(`http://localhost:5005/api/chat/thread/${activeChatId}/message`, { type: 'system', content: 'Rescan Initiated' });
+        const { data: scanData } = await axios.post('http://localhost:5005/api/scan', {
           url: targetUrl, userId, force: true, chatId: activeChatId,
           scope: scanParams.scope, mode: scanParams.mode, tests: scanParams.tests
         });
@@ -345,7 +354,7 @@ const ChatInterface = ({
 
     try {
       const latestReport = [...messages].reverse().find(m => m.type === 'report' || m.type === 'rescan');
-      const { data } = await axios.post(`http://localhost:5000/api/chat/thread/${activeChatId}/ask`, {
+      const { data } = await axios.post(`http://localhost:5005/api/chat/thread/${activeChatId}/ask`, {
         message: finalInput,
         scanReportId: latestReport?.scanReportId || null
       });
@@ -392,11 +401,34 @@ const ChatInterface = ({
       </motion.div>
       <div>
         <h1 className="text-lg font-black uppercase tracking-tighter text-[var(--eu-text-main)] italic">Neural QA Hub</h1>
-        <p className="text-[9px] font-black uppercase tracking-[0.3em] text-primary opacity-40 mt-1">Enter a URL to begin</p>
+        <p className="text-[9px] font-black uppercase tracking-[0.3em] text-primary opacity-40 mt-1">Select or Enter a Target Topology</p>
       </div>
+
+      {/* Quick Targets */}
+      <div className="w-full space-y-2">
+        <p className="text-[8px] font-black uppercase tracking-[0.25em] text-slate-600 text-left px-1">Tactical Presets</p>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { url: 'google.com', label: 'Google' },
+            { url: 'mygov.in', label: 'MyGov India' },
+            { url: 'takeuforward.org', label: 'TakeuForward' },
+            { url: 'unstop.com', label: 'Unstop' }
+          ].map(site => (
+            <button
+              key={site.url}
+              onClick={() => handleSend(null, site.url)}
+              className="flex items-center gap-2 p-2.5 bg-white/5 border border-white/10 rounded-xl hover:border-primary/40 hover:bg-primary/5 transition-all text-left group"
+            >
+              <Globe size={12} className="text-slate-500 group-hover:text-primary transition-colors" />
+              <span className="text-[9px] font-black uppercase tracking-tight text-white/70 group-hover:text-white">{site.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 w-full text-left">
-        {[['Console/Net', 'Diagnostic'], ['Accessibility', 'Neural Audit'], ['UI Layout', 'Visual QA'], ['Screenshots', 'Optic Capture']].map(([t, s]) => (
-          <div key={t} className="p-3 bg-[var(--eu-bg-card)] border border-[var(--eu-glass-border)] rounded-xl hover:border-primary/30 transition-all">
+        {[['Console/Net', 'Diagnostic'], ['Accessibility', 'Neural Audit'], ['UI Layout', 'Visual QA'], ['Live Monitoring', 'Sentinel Flow']].map(([t, s]) => (
+          <div key={t} className="p-3 bg-[var(--eu-bg-card)] border border-[var(--eu-glass-border)] rounded-xl opacity-40">
             <p className="text-[9px] font-black uppercase tracking-widest text-[var(--eu-text-main)] mb-0.5">{t}</p>
             <p className="text-[7px] text-[var(--eu-text-main)] opacity-30 font-mono uppercase">{s}</p>
           </div>
@@ -418,7 +450,7 @@ const ChatInterface = ({
               <p className="text-[11px] font-black text-[var(--eu-text-main)] truncate uppercase tracking-tight">
                 {chatMeta.customName || new URL(chatMeta.url).hostname}
               </p>
-              <p className="text-[8px] text-slate-500 font-mono truncate">{chatMeta.url}</p>
+              <p className="hidden md:block text-[8px] text-slate-500 font-mono truncate">{chatMeta.url}</p>
             </>
           ) : (
             <p className="text-[11px] font-black text-[var(--eu-text-main)] opacity-50 uppercase tracking-tight">New Session</p>
@@ -426,7 +458,7 @@ const ChatInterface = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {activeChatId && (
+          {activeChatId && activeView === 'qa' && (
             <>
               <PreviousScansDropdown chatId={activeChatId} onSelect={onViewFullReport} />
               <button
@@ -439,10 +471,12 @@ const ChatInterface = ({
               </button>
             </>
           )}
-          <button onClick={onResetTarget}
-            className="px-3 py-1.5 bg-[var(--eu-bg-void)] hover:bg-white/5 border border-[var(--eu-glass-border)] rounded-lg text-[9px] font-black uppercase tracking-widest text-[var(--eu-text-main)] opacity-70 transition-all">
-            Reset
-          </button>
+          {activeView === 'qa' && (
+            <button onClick={onResetTarget}
+              className="px-3 py-1.5 bg-[var(--eu-bg-void)] hover:bg-white/5 border border-[var(--eu-glass-border)] rounded-lg text-[9px] font-black uppercase tracking-widest text-[var(--eu-text-main)] opacity-70 transition-all">
+              Reset
+            </button>
+          )}
         </div>
       </div>
 
@@ -466,9 +500,19 @@ const ChatInterface = ({
         )}
       </AnimatePresence>
 
-      {/* ── Messages ── */}
+      {/* ── Messages / Dashboard Views ── */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1 custom-scrollbar bg-[var(--eu-bg-void)]">
-        {loading ? (
+        {activeView === 'schedule' ? (
+          <SchedulingDashboard setAlert={setAlert} confirm={confirm} />
+        ) : activeView === 'analyze' ? (
+          <div className="pt-10">
+            <GlobalIntelligence reports={reports} />
+          </div>
+        ) : activeView === 'learn' ? (
+          <div className="pt-10 h-full">
+            <LearningHubPage />
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="animate-spin text-eu-accent" size={24} />
           </div>
@@ -540,7 +584,7 @@ const ChatInterface = ({
           </AnimatePresence>
         )}
 
-        {(isTyping || (isScanning && messages.length === 0)) && (
+        {activeView === 'qa' && (isTyping || (isScanning && messages.length === 0)) && (
           <div className="flex justify-start">
             <div className="flex gap-1.5 p-3 bg-[var(--eu-bg-card)] rounded-xl border border-[var(--eu-glass-border)]">
               {[0, 1, 2].map(i => (
@@ -556,60 +600,62 @@ const ChatInterface = ({
       </div>
 
       {/* ── Footer / Input ── */}
-      <div className="p-3 bg-[var(--eu-bg-void)] z-10 border-t border-[var(--eu-glass-border)]">
-        {/* Scan params (always visible to allow reconfiguring for rescans) */}
-        <div className="max-w-5xl mx-auto mb-3 space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
-              {['single', 'site'].map(s => (
-                <button key={s} onClick={() => setScanParams(p => ({ ...p, scope: s }))}
-                  className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${scanParams.scope === s ? 'bg-primary text-white shadow-neon' : 'text-[var(--eu-text-muted)] hover:text-white'}`}>
-                  {s === 'single' ? 'Single Page' : 'Full Site'}
-                </button>
-              ))}
+      {activeView === 'qa' && (
+        <div className="p-3 bg-[var(--eu-bg-void)] z-10 border-t border-[var(--eu-glass-border)]">
+          {/* Scan params (always visible to allow reconfiguring for rescans) */}
+          <div className="max-w-5xl mx-auto mb-3 space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
+                {['single', 'site'].map(s => (
+                  <button key={s} onClick={() => setScanParams(p => ({ ...p, scope: s }))}
+                    className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${scanParams.scope === s ? 'bg-primary text-white shadow-neon' : 'text-[var(--eu-text-muted)] hover:text-white'}`}>
+                    {s === 'single' ? 'Single Page' : 'Full Site'}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setShowSensors(o => !o)}
+                className={`px-3 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-neon ${showSensors ? 'bg-primary border border-primary text-white' : 'bg-[var(--eu-bg-void)] border border-white/10 text-primary hover:bg-white/5'}`}>
+                Sensors ({scanParams.tests.length}) <ChevronUp size={11} className={`transition-transform ${showSensors ? 'rotate-180' : ''}`} />
+              </button>
             </div>
-            <button onClick={() => setShowSensors(o => !o)}
-              className={`px-3 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-neon ${showSensors ? 'bg-primary border border-primary text-white' : 'bg-[var(--eu-bg-void)] border border-white/10 text-primary hover:bg-white/5'}`}>
-              Sensors ({scanParams.tests.length}) <ChevronUp size={11} className={`transition-transform ${showSensors ? 'rotate-180' : ''}`} />
-            </button>
+            <AnimatePresence>
+              {showSensors && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                  className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-7 gap-2">
+                  {['console', 'network', 'forms', 'ui', 'lighthouse', 'accessibility', 'links'].map(test => {
+                    const labels = { console: 'Console', network: 'Network', forms: 'Forms', ui: 'UI/UX', lighthouse: 'Lighthouse', accessibility: 'A11y', links: 'Links' };
+                    const on = scanParams.tests.includes(test);
+                    return (
+                      <button key={test} onClick={() => toggleTest(test)}
+                        className={`p-2 rounded-xl transition-all border text-[8px] font-black uppercase tracking-widest flex items-center justify-between gap-1 ${on ? 'bg-primary/10 text-primary border-primary/30' : 'bg-white/5 text-[var(--eu-text-muted)] border-transparent hover:border-white/10'}`}>
+                        {labels[test]}
+                        <div className={`size-3 rounded-full border flex items-center justify-center ${on ? 'bg-primary border-primary' : 'border-slate-600'}`}>
+                          {on && <Check size={7} strokeWidth={4} />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-          <AnimatePresence>
-            {showSensors && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-7 gap-2">
-                {['console', 'network', 'forms', 'ui', 'lighthouse', 'accessibility', 'links'].map(test => {
-                  const labels = { console: 'Console', network: 'Network', forms: 'Forms', ui: 'UI/UX', lighthouse: 'Lighthouse', accessibility: 'A11y', links: 'Links' };
-                  const on = scanParams.tests.includes(test);
-                  return (
-                    <button key={test} onClick={() => toggleTest(test)}
-                      className={`p-2 rounded-xl transition-all border text-[8px] font-black uppercase tracking-widest flex items-center justify-between gap-1 ${on ? 'bg-primary/10 text-primary border-primary/30' : 'bg-white/5 text-[var(--eu-text-muted)] border-transparent hover:border-white/10'}`}>
-                      {labels[test]}
-                      <div className={`size-3 rounded-full border flex items-center justify-center ${on ? 'bg-primary border-primary' : 'border-slate-600'}`}>
-                        {on && <Check size={7} strokeWidth={4} />}
-                      </div>
-                    </button>
-                  );
-                })}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
 
-        <form onSubmit={handleSend} className="relative max-w-5xl mx-auto">
-          <input
-            type="text"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            placeholder={activeChatId ? 'Ask a question about this scan... (e.g. "what are the broken links?")' : 'Enter a URL to scan (e.g. example.com)...'}
-            disabled={isScanning}
-            className="w-full bg-[var(--eu-bg-card)] border-none rounded-xl py-3 px-6 pr-14 text-[11px] text-[var(--eu-text-main)] focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-[var(--eu-text-main)] placeholder:opacity-20 disabled:opacity-50"
-          />
-          <button type="submit" disabled={!input.trim() || isTyping || isScanning}
-            className={`absolute right-4 top-1/2 -translate-y-1/2 p-1.5 transition-all ${input.trim() && !isTyping && !isScanning ? 'text-primary hover:scale-110' : 'text-[var(--eu-text-main)] opacity-20'}`}>
-            <Send size={18} />
-          </button>
-        </form>
-      </div>
+          <form onSubmit={handleSend} className="relative max-w-5xl mx-auto">
+            <input
+              type="text"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              placeholder={activeChatId ? 'Ask a question about this scan... (e.g. "what are the broken links?")' : 'Enter a URL to scan (e.g. example.com)...'}
+              disabled={isScanning}
+              className="w-full bg-[var(--eu-bg-card)] border-none rounded-xl py-3 px-6 pr-14 text-[11px] text-[var(--eu-text-main)] focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-[var(--eu-text-main)] placeholder:opacity-20 disabled:opacity-50"
+            />
+            <button type="submit" disabled={!input.trim() || isTyping || isScanning}
+              className={`absolute right-4 top-1/2 -translate-y-1/2 p-1.5 transition-all ${input.trim() && !isTyping && !isScanning ? 'text-primary hover:scale-110' : 'text-[var(--eu-text-main)] opacity-20'}`}>
+              <Send size={18} />
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

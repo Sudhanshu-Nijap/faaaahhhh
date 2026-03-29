@@ -10,12 +10,12 @@ const LiveFuzzingConsole = ({ reportId }) => {
   const scrollRef = useRef(null);
 
   useEffect(() => {
-    const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+    const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5005';
     const socket = io(SOCKET_URL);
 
     const fetchInitialEvents = async () => {
       try {
-        const { data } = await axios.get(`http://localhost:5000/api/report/${reportId}`);
+        const { data } = await axios.get(`http://localhost:5005/api/report/${reportId}`);
         if (data.liveEvents) {
           setEvents(data.liveEvents);
         }

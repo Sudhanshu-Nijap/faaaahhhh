@@ -211,11 +211,30 @@ const generatePDF = async (reportId) => {
 </div>
 
 <!-- ═══════ EXECUTIVE SUMMARY ═══════ -->
-<div class="section">
-  <div class="section-header"><span class="section-tag">01</span><span class="section-title">Executive Summary</span></div>
   <div class="summary-box">
     <p class="summary-text">${report.aiInsights?.summary || 'No AI summary was generated for this scan.'}</p>
   </div>
+
+  <!-- Strategic Delta (Comparison) -->
+  ${report.comparison?.previousReportId ? `
+  <div style="margin-top:24px; background: ${report.comparison.scoreDelta >= 0 ? '#065f4620' : '#991b1b20'}; border: 1px solid ${report.comparison.scoreDelta >= 0 ? '#05966940' : '#dc262640'}; border-radius: 12px; padding: 20px;">
+    <div style="font-size: 9px; letter-spacing: 3px; text-transform: uppercase; color: #64748b; margin-bottom: 8px;">Delta Comparison</div>
+    <div style="display: flex; align-items: center; justify-content: justify; gap: 24px;">
+        <div>
+            <div style="font-size: 32px; font-weight: 900; color: ${report.comparison.scoreDelta >= 0 ? '#22c55e' : '#dc2626'}">
+                ${report.comparison.scoreDelta >= 0 ? '+' : ''}${report.comparison.scoreDelta}%
+            </div>
+            <div style="font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: 1px;">Score Delta</div>
+        </div>
+        <div style="flex: 1; border-left: 1px solid #334155; padding-left: 24px;">
+            <div style="font-size: 11px; color: #cbd5e1; line-height: 1.6;">
+                <strong>New Anomalies:</strong> ${report.comparison.stats?.newErrors || 0}<br/>
+                <strong>Fixed Issues:</strong> ${report.comparison.stats?.fixedErrors || 0}<br/>
+                <strong>Current Impact:</strong> ${report.comparison.stats?.impact || 'Calculated Baseline'}
+            </div>
+        </div>
+    </div>
+  </div>` : ''}
 
   <!-- Lighthouse Scores -->
   ${Object.values(lhScores).some(v => v > 0) ? `

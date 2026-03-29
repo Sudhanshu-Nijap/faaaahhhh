@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldCheck, Shield, Bug, Activity, Command, Github as GitHubIcon, Twitter, Cpu, Layout, Terminal, Lock, Zap, MousePointer2, Skull, X, Brain } from 'lucide-react';
+import { ShieldCheck, Shield, Bug, Activity, Command, Github as GitHubIcon, Twitter, Cpu, Layout, Terminal, Lock, Zap, MousePointer2, Skull, X, Brain, Calendar, Bot } from 'lucide-react';
 import axios from 'axios';
 
 import ScanForm from './components/ScanForm';
@@ -21,10 +21,16 @@ import LoadingScreen from './components/LoadingScreen';
 import Footer from './components/Footer';
 import LearningHubPage from './components/LearningHub/LearningHubPage';
 import FloatingAIWidget from './components/FloatingAIWidget';
+import SchedulingDashboard from './components/SchedulingDashboard';
+import AddJobModal from './components/AddJobModal';
+import IDEView from './components/IDEView';
 
 function App() {
+
+
   const [activeReportId, setActiveReportId] = useState(() => localStorage.getItem('sentinel_active_report') || null);
   const [activeChatId, setActiveChatId] = useState(() => localStorage.getItem('sentinel_active_chat') || null);
+  const [showIDE, setShowIDE] = useState(false);
 
   useEffect(() => {
     if (activeChatId) localStorage.setItem('sentinel_active_chat', activeChatId);
@@ -36,17 +42,17 @@ function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('token'));
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
-  const [showReportList, setShowReportList] = useState(false);
+  const [activeView, setActiveView] = useState('chat');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [scanProgress, setScanProgress] = useState(null);
-  const [alert, setAlert] = useState(null); // { type: 'success' | 'error' | 'info', message: string }
-  const [confirmModal, setConfirmModal] = useState(null); // { title, message, onConfirm, onCancel, confirmText, type, showInput }
-  const [showGlobalStats, setShowGlobalStats] = useState(false);
   const [reports, setReports] = useState([]);
-  const [pendingChatMessage, setPendingChatMessage] = useState(null); // NEW: Queue for manual AI queries
-  const [chatKey, setChatKey] = useState(0); // NEW: Forcing ChatInterface reset
-  const [showLearningHub, setShowLearningHub] = useState(false);
+  const [scanProgress, setScanProgress] = useState(null);
+  const [alert, setAlert] = useState(null);
+  const [confirmModal, setConfirmModal] = useState(null);
+  const [pendingChatMessage, setPendingChatMessage] = useState(null);
+  const [scheduleTargetUrl, setScheduleTargetUrl] = useState(null);
+
+
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -77,7 +83,7 @@ function App() {
     try {
       const userId = localStorage.getItem('userId');
       if (!userId) return;
-      const { data } = await axios.get(`http://localhost:5000/api/reports?userId=${userId}`);
+      const { data } = await axios.get(`http://localhost:5005/api/reports?userId=${userId}`);
       setReports(data);
     } catch (err) {
       console.error("Failed to sync reports for global intelligence", err);
@@ -88,7 +94,7 @@ function App() {
     try {
       const userId = localStorage.getItem('userId');
       if (!userId) return;
-      const { data } = await axios.get(`http://localhost:5000/api/scan/active/${userId}`);
+      const { data } = await axios.get(`http://localhost:5005/api/scan/active/${userId}`);
       if (data && data._id) {
         setActiveReportId(data._id);
         // REMOVED: setRefreshKey - this caused the infinite loop
@@ -103,7 +109,7 @@ function App() {
       fetchReports();
       fetchActiveScan();
     }
-  }, [isLoggedIn]); // REMOVED: refreshKey from dependency to stop the loop
+  }, [isLoggedIn, refreshKey]);
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
@@ -129,8 +135,13 @@ function App() {
      }
   }, []);
 
+  const socketRef = useRef(null);
+  
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    if (!socketRef.current) {
+        socketRef.current = io('http://localhost:5005');
+    }
+    const socket = socketRef.current;
     
     socket.on('connect', () => {
       console.log('[Socket]: Reconnected. Syncing rooms...');
@@ -174,7 +185,7 @@ function App() {
   const handleReScan = async (url) => {
     try {
       const userId = localStorage.getItem('userId');
-      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/scan`, {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5005/api'}/scan`, {
         url,
         userId,
         force: true
@@ -237,6 +248,12 @@ function App() {
       </AnimatePresence>
 
       {/* Global Alert System - Top Layer */}
+      <AnimatePresence>
+        {showIDE && (
+          <IDEView key="ide-view" onClose={() => setShowIDE(false)} />
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {alert && (
           <motion.div
@@ -327,24 +344,40 @@ function App() {
             </nav>
           )}
 
-          <div className="flex-1" />
+          {isLoggedIn && (
+            <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 md:gap-3">
+              {[
+                { id: 'ide', label: 'DEBUG', icon: <Brain size={15} />, title: 'AI Neural Debugger' },
+                { id: 'qa', label: 'CHAT', icon: <Bot size={15} />, title: 'Neural Assistant' },
+                { id: 'learn', label: 'LEARN', icon: <Cpu size={15} />, title: 'Cognitive Learning Hub' },
+                { id: 'schedule', label: 'SCHEDULE', icon: <Calendar size={15} />, title: 'Neural Scheduler' },
+                { id: 'analyze', label: 'ANALYZE', icon: <Activity size={15} />, title: 'Global Intelligence' },
+              ].map(v => (
+                <button
+                  key={v.id}
+                  onClick={() => {
+                    if (v.id === 'ide') {
+                      setShowIDE(true);
+                      return;
+                    }
+                    setActiveView(v.id);
+                    setViewingReportId(null);
+                  }}
+                  className={`px-3 py-2 md:px-5 md:py-2.5 rounded-full transition-all border flex items-center gap-2.5 group ${
+                    activeView === v.id 
+                    ? 'bg-primary border-primary text-white shadow-neon scale-105' 
+                    : 'bg-white/5 border-white/10 text-primary hover:bg-primary/10 hover:border-primary/40'
+                  }`}
+                  title={v.title}
+                >
+                  <div className={activeView === v.id ? "animate-pulse" : ""}>{v.icon}</div>
+                  <span className="hidden sm:inline text-[9px] font-black tracking-[0.2em]">{v.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="flex items-center gap-4">
-            {isLoggedIn && (
-              <button
-                onClick={() => {
-                  setShowLearningHub(true);
-                  setViewingReportId(null);
-                  setShowReportList(false);
-                  setShowGlobalStats(false);
-                }}
-                className={`p-3 bg-[var(--eu-bg-void)]/60 hover:bg-eu-accent/10 rounded-2xl transition-all border border-[var(--eu-glass-border)] text-primary hover:text-eu-accent hover:border-eu-accent/30 shadow-sm ${showLearningHub ? 'bg-eu-accent/10 border-eu-accent/30 text-eu-accent shadow-neon' : ''}`}
-                title="Cognitive Learning Hub"
-              >
-                <Brain size={16} fill={showLearningHub ? "currentColor" : "none"} className={showLearningHub ? "animate-pulse" : ""} />
-              </button>
-            )}
-
             <button
               onClick={toggleTheme}
               className="p-3 bg-[var(--eu-bg-void)]/60 hover:bg-[var(--eu-bg-void)]/80 rounded-2xl transition-all border border-[var(--eu-glass-border)] text-primary"
@@ -378,7 +411,7 @@ function App() {
               className="flex flex-col gap-0"
             >
               {/* Hero Section */}
-              <section id="home" className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden">
+              <section id="home" className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden scroll-mt-32">
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1200px] h-[1200px] bg-primary/5 rounded-full blur-[180px] -z-10 animate-pulse" />
 
                 <div className="text-center z-10 max-w-5xl w-full mx-auto px-10">
@@ -420,18 +453,18 @@ function App() {
                 </div>
               </section>
 
-              <section id="capabilities" className="py-6 sm:py-8">
+              <section id="capabilities" className="py-6 sm:py-8 scroll-mt-32">
                 <Capabilities />
               </section>
 
-              <section id="how-it-works" className="flex items-center justify-center py-6 sm:py-8">
+              <section id="how-it-works" className="flex items-center justify-center py-6 sm:py-8 scroll-mt-32">
                 <HowItWorks />
               </section>
 
 
 
 
-              <div id="about-us" className="relative flex items-center justify-center py-6 sm:py-8 px-4 sm:px-10">
+              <div id="about-us" className="relative flex items-center justify-center py-6 sm:py-8 px-4 sm:px-10 scroll-mt-32">
                 <AboutUs />
               </div>
             </motion.div>
@@ -452,37 +485,33 @@ function App() {
                 <ChatSidebar
                   onSelectChat={(chatId) => {
                     setActiveChatId(chatId);
+                    setActiveView('qa');
                     setViewingReportId(null);
-                    setShowReportList(false);
-                    setShowGlobalStats(false);
                     setIsSidebarOpen(false);
-                    setShowLearningHub(false);
                   }}
                   onViewReport={(id) => {
                     setViewingReportId(id);
-                    setShowReportList(false);
-                    setShowGlobalStats(false);
                     setIsSidebarOpen(false);
-                    setShowLearningHub(false);
                   }}
                   activeChatId={activeChatId}
                   onNewSession={() => {
                     setActiveChatId(null);
+                    setActiveView('qa');
                     setViewingReportId(null);
-                    setShowReportList(false);
-                    setShowGlobalStats(false);
                     setIsSidebarOpen(false);
-                    setShowLearningHub(false);
                   }}
                   refreshKey={refreshKey}
                   onToggleTheme={toggleTheme}
                   theme={theme}
                   onGroupChart={() => {
-                    setShowReportList(true);
-                    setShowGlobalStats(true);
+                    setActiveView('analyze');
                     setViewingReportId(null);
                     setIsSidebarOpen(false);
-                    setShowLearningHub(false);
+                  }}
+                  onScheduleClick={() => {
+                    setActiveView('schedule');
+                    setViewingReportId(null);
+                    setIsSidebarOpen(false);
                   }}
                   onDeleteChat={(id) => {
                     if (activeChatId === id) {
@@ -503,27 +532,7 @@ function App() {
 
               <div className="flex-1 h-full relative p-4 md:p-6 overflow-hidden">
                 <AnimatePresence mode="wait">
-                  {showLearningHub ? (
-                    <motion.div
-                      key="learning-hub-view"
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 1.05 }}
-                      className="h-full flex flex-col"
-                    >
-                      <div className="mb-8 flex-none">
-                        <button
-                          onClick={() => setShowLearningHub(false)}
-                          className="px-6 py-2 bg-[var(--eu-bg-void)]/60 hover:bg-[var(--eu-bg-void)]/80 border border-[var(--eu-glass-border)] rounded-xl text-[10px] font-black uppercase tracking-widest text-eu-accent transition-all"
-                        >
-                          ← Exit Learning Protocol
-                        </button>
-                      </div>
-                      <div className="flex-1 min-h-0">
-                        <LearningHubPage />
-                      </div>
-                    </motion.div>
-                  ) : viewingReportId ? (
+                  {viewingReportId ? (
                     <motion.div
                       key="report-view"
                       initial={{ opacity: 0, x: 20 }}
@@ -544,72 +553,36 @@ function App() {
                         onAskAI={(msg) => {
                           setPendingChatMessage(msg);
                           setViewingReportId(null);
+                          setActiveView('qa');
                         }}
                         confirm={confirm}
                         prompt={prompt}
                         setAlert={setAlert}
                       />
                     </motion.div>
-                  ) : showReportList ? (
-                    <motion.div
-                      key="lattice-view"
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.98 }}
-                      className="h-full overflow-y-auto custom-scrollbar"
-                    >
-                      <div className="mb-8 flex items-center justify-between">
-                        <button
-                          onClick={() => { setShowReportList(false); setShowGlobalStats(false); }}
-                          className="px-6 py-2 bg-[var(--eu-bg-void)]/60 hover:bg-[var(--eu-bg-void)]/80 border border-[var(--eu-glass-border)] rounded-xl text-[10px] font-black uppercase tracking-widest text-eu-accent transition-all"
-                        >
-                          ← Return to Neural Chat
-                        </button>
-                        {showGlobalStats && (
-                          <p className="text-[10px] font-black uppercase tracking-industrial text-slate-500 opacity-40">Tactical_Aggregate_Module</p>
-                        )}
-                      </div>
-
-                      {showGlobalStats ? (
-                        <GlobalIntelligence reports={reports} />
-                      ) : (
-                        <ReportDashboard
-                          onSelectReport={(id) => {
-                            setActiveReportId(id);
-                            setViewingReportId(id);
-                            setShowReportList(false);
-                            setShowGlobalStats(false);
-                          }}
-                          refreshKey={refreshKey}
-                          theme={theme}
-                          onDeleteReport={(id) => {
-                            if (activeReportId === id) setActiveReportId(null);
-                            setRefreshKey(prev => prev + 1);
-                          }}
-                          confirm={confirm}
-                          prompt={prompt}
-                          setAlert={setAlert}
-                        />
-                      )}
-                    </motion.div>
                   ) : (
                     <motion.div
-                      key="chat-view"
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
+                      key="chat-interface-wrapper"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
                       className="h-full"
                     >
                       <ChatInterface
                         key={activeChatId || 'new'}
                         activeChatId={activeChatId}
+                        activeView={activeView}
+                        onViewChange={setActiveView}
                         onScanStarted={handleScanStarted}
                         onViewFullReport={setViewingReportId}
                         onRefresh={() => setRefreshKey(prev => prev + 1)}
-                        onResetTarget={() => { setActiveChatId(null); }}
+                        onResetTarget={() => { setActiveChatId(null); setActiveView('qa'); }}
                         globalScanProgress={scanProgress}
                         pendingMessage={pendingChatMessage}
                         onMessageConsumed={() => setPendingChatMessage(null)}
+                        reports={reports}
+                        setAlert={setAlert}
+                        confirm={confirm}
                       />
                     </motion.div>
                   )}
@@ -786,7 +759,18 @@ function App() {
           />
         )}
       </AnimatePresence>
-      {isLoggedIn && showLearningHub && <FloatingAIWidget />}
+      {isLoggedIn && activeView === 'learn' && <FloatingAIWidget />}
+
+      <AnimatePresence>
+        {scheduleTargetUrl && (
+          <AddJobModal 
+            isOpen={!!scheduleTargetUrl} 
+            onClose={() => setScheduleTargetUrl(null)}
+            initialUrl={scheduleTargetUrl}
+            setAlert={setAlert}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -8,6 +8,15 @@ const ScanForm = ({ onScanStarted }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [chaosIntensity, setChaosIntensity] = useState('standard');
+  const [showScheduling, setShowScheduling] = useState(false);
+  const [schedule, setSchedule] = useState({
+    scanType: 'quick',
+    mode: 'one-time',
+    date: new Date().toISOString().split('T')[0],
+    time: '12:00',
+    dayOfWeek: 1
+  });
+
 
   // Mouse tilt effect logic
   const x = useMotionValue(0);
@@ -75,14 +84,29 @@ const ScanForm = ({ onScanStarted }) => {
     setLoading(true);
     try {
       const userId = localStorage.getItem('userId');
-      const response = await axios.post('http://localhost:5000/api/scan', { 
-        url: targetUrl, 
-        userId,
-        chaosIntensity 
-      });
-      onScanStarted(response.data.reportId);
-      setUrl('');
+      
+      if (showScheduling) {
+        // Create a scheduled job
+        await axios.post('http://localhost:5005/api/scheduling/jobs', {
+          ...schedule,
+          url: targetUrl,
+          userId
+        });
+        setUrl('');
+        setShowScheduling(false);
+        // We might want a callback here to notify parent about new job
+      } else {
+        // Run immediate scan
+        const response = await axios.post('http://localhost:5005/api/scan', { 
+          url: targetUrl, 
+          userId,
+          chaosIntensity 
+        });
+        onScanStarted(response.data.reportId);
+        setUrl('');
+      }
     } catch (err) {
+
       console.error('Scan initiation failed', err);
       setError(err.response?.data?.error || 'System failed to initiate protocol');
     } finally {
@@ -133,7 +157,7 @@ const ScanForm = ({ onScanStarted }) => {
                     <Loader2 size={20} className="animate-spin sm:size-[24px]" />
                   ) : (
                     <>
-                      <span>Initiate Protocol</span>
+                      <span>{showScheduling ? 'Confirm Schedule' : 'Initiate Protocol'}</span>
                       <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform sm:size-[18px]" />
                     </>
                   )}
@@ -142,7 +166,24 @@ const ScanForm = ({ onScanStarted }) => {
             </div>
           </div>
 
-          <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-10">
+          <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6">
+            <button
+               type="button"
+               onClick={() => setShowScheduling(!showScheduling)}
+               className={`flex items-center gap-3 px-6 py-2.5 rounded-2xl border transition-all ${
+                 showScheduling 
+                  ? 'bg-eu-accent/10 border-eu-accent/30 text-eu-accent shadow-neon' 
+                  : 'bg-[var(--eu-bg-void)] border-[var(--eu-glass-border)] text-text-muted/60 opacity-60 hover:opacity-100'
+               }`}
+            >
+               <Calendar size={12} className={showScheduling ? 'animate-pulse' : ''} />
+               <span className="text-[9px] font-black uppercase tracking-widest">
+                 {showScheduling ? 'Cancel Scheduling' : 'Automate Lifecycle'}
+               </span>
+            </button>
+            
+            <div className="w-[1px] h-4 bg-white/5 hidden sm:block" />
+
             <div className="flex items-center gap-3 bg-[var(--eu-bg-void)] px-4 py-2 rounded-2xl border border-[var(--eu-glass-border)]">
               <span className="text-[9px] font-black uppercase tracking-widest text-text-muted/60">Chaos Intensity:</span>
               <div className="flex gap-1.5 p-1 bg-[var(--eu-bg-void)]/20 rounded-xl">
@@ -163,6 +204,116 @@ const ScanForm = ({ onScanStarted }) => {
               </div>
             </div>
           </div>
+
+          <AnimatePresence>
+            {showScheduling && (
+              <motion.div
+                initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                className="mt-6 p-6 glass-euphoria border border-[var(--eu-glass-border)] rounded-[32px] overflow-hidden relative shadow-2xl"
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-eu-accent to-violet-500 opacity-30" />
+                <div className="flex flex-col md:flex-row gap-8">
+                  <div className="flex-1 space-y-6">
+                    <div>
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-muted mb-4 border-b border-white/5 pb-2">Diagnostic Profile</h4>
+                      <div className="flex gap-4">
+                        {['quick', 'full'].map(t => (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setSchedule({...schedule, scanType: t})}
+                            className={`flex-1 py-3 px-4 rounded-xl border transition-all ${
+                              schedule.scanType === t 
+                                ? 'bg-primary/20 border-primary/40 text-primary shadow-neon-small scale-[1.02]' 
+                                : 'bg-black/20 border-white/5 text-muted hover:border-white/10'
+                            }`}
+                          >
+                            <div className="text-[10px] font-black uppercase tracking-widest">{t === 'quick' ? 'Pulse' : 'Audit'}</div>
+                            <div className="text-[8px] opacity-40 uppercase tracking-tighter mt-0.5">{t === 'quick' ? 'Basic Telemetry' : 'Deep Neural Forge'}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-muted mb-4 border-b border-white/5 pb-2">Neural Cycle</h4>
+                      <div className="flex gap-3">
+                        {['one-time', 'daily', 'weekly'].map(m => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setSchedule({...schedule, mode: m})}
+                            className={`px-4 py-2 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${
+                              schedule.mode === m 
+                                ? 'bg-eu-accent/20 border-eu-accent/40 text-eu-accent shadow-neon-small' 
+                                : 'bg-black/20 border-white/5 text-muted'
+                            }`}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="w-[1px] bg-white/5 hidden md:block" />
+
+                  <div className="flex-1 space-y-6">
+                    <div>
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-muted mb-4 border-b border-white/5 pb-2">Tactical Window</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                           <label className="text-[8px] font-black text-muted uppercase tracking-widest">Execution Time</label>
+                           <input 
+                             type="time" 
+                             className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-eu-accent/50"
+                             value={schedule.time}
+                             onChange={(e) => setSchedule({...schedule, time: e.target.value})}
+                           />
+                        </div>
+
+                        {schedule.mode === 'one-time' && (
+                          <div className="space-y-2">
+                             <label className="text-[8px] font-black text-muted uppercase tracking-widest">Target Date</label>
+                             <input 
+                               type="date" 
+                               className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-eu-accent/50"
+                               value={schedule.date}
+                               onChange={(e) => setSchedule({...schedule, date: e.target.value})}
+                             />
+                          </div>
+                        )}
+
+                        {schedule.mode === 'weekly' && (
+                          <div className="space-y-2">
+                             <label className="text-[8px] font-black text-muted uppercase tracking-widest">Day of Epoch</label>
+                             <select 
+                               className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-eu-accent/50 appearance-none"
+                               value={schedule.dayOfWeek}
+                               onChange={(e) => setSchedule({...schedule, dayOfWeek: parseInt(e.target.value)})}
+                             >
+                               {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => (
+                                 <option key={d} value={i} className="bg-[#0a0a0c]">{d}</option>
+                               ))}
+                             </select>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="bg-white/5 p-4 rounded-2xl border border-dashed border-white/10">
+                       <p className="text-[8px] font-medium text-muted leading-relaxed uppercase tracking-widest">
+                         Note: Automated audits will be dispatched from the unified substrate. Ensure target infrastructure allows standard crawler headers.
+                       </p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           
           <AnimatePresence>
             {error && (

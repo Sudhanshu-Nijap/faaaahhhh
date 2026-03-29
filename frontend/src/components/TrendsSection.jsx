@@ -10,7 +10,7 @@ const TrendsSection = ({ url, userId }) => {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const { data } = await axios.get(`http://localhost:5000/api/stats/trends?url=${url}&userId=${userId}`);
+        const { data } = await axios.get(`http://localhost:5005/api/stats/trends?url=${url}&userId=${userId}`);
         setHistory(data);
       } catch (err) {
         console.error("Failed to fetch trends", err);

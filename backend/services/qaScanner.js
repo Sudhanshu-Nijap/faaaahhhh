@@ -3,6 +3,7 @@
  * runDedicatedScan - Ultimate fallback using a fresh browser instance
  */
 async function runDedicatedScan(url) {
+    let chrome;
     try {
         const lighthouse = (await import('lighthouse')).default;
         const chromeLauncher = await import('chrome-launcher');
@@ -13,33 +14,38 @@ async function runDedicatedScan(url) {
         let chromePath;
         try {
             chromePath = chromium.executablePath();
+            console.log(`[qaScanner]: Bound to Playwright Chromium: ${chromePath}`);
         } catch (e) {
             console.warn('[qaScanner]: Could not determine Playwright Chromium path, letting chrome-launcher decide.');
         }
 
-        const chrome = await chromeLauncher.launch({ 
-            chromePath: chromePath, // Force use of Playwright's Chromium if found
+        chrome = await chromeLauncher.launch({ 
+            chromePath: chromePath, 
             chromeFlags: [
                 '--headless', 
                 '--no-sandbox', 
                 '--disable-gpu',
                 '--disable-web-security',
-                '--ignore-certificate-errors'
+                '--ignore-certificate-errors',
+                '--remote-allow-origins=*',
+                '--disable-storage-reset',
+                '--disable-dev-shm-usage'
             ] 
         });
         
+        console.log(`[qaScanner]: Pulse Port Active: ${chrome.port}. Stabilization Window (1000ms)...`);
+        await new Promise(res => setTimeout(res, 1000));
+
         const result = await lighthouse(url, {
             port: chrome.port,
             output: 'json',
-            logLevel: 'error',
+            logLevel: 'info', 
             onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
             throttlingMethod: 'provided'
         });
 
-        await chrome.kill();
-
         if (result && result.lhr) {
-            console.log(`[qaScanner]: Dedicated Pulse SUCCESS for ${url}`);
+            console.log(`[qaScanner]: Telemetry Captured for ${url}. Scores -> Perf: ${Math.round(result.lhr.categories.performance?.score * 100 || 0)}`);
             return processLhr(result.lhr, url);
         }
         
@@ -50,6 +56,13 @@ async function runDedicatedScan(url) {
             scores: { performance: 0, accessibility: 0, bestPractices: 0, seo: 0 },
             accessibilityIssues: []
         };
+    } finally {
+        if (chrome) {
+            console.log('[qaScanner]: Closing dedicated bridge...');
+            await chrome.kill().catch(() => {});
+            // --- High-Resiliency Cleanup Window (V34) ---
+            await new Promise(res => setTimeout(res, 500));
+        }
     }
 }
 

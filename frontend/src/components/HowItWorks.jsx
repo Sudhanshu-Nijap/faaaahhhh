@@ -1,32 +1,32 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Globe, Shield, Activity, Lock, Cpu, Database, Bug, BarChart } from 'lucide-react';
+import { Globe, Shield, Activity, Lock, Cpu, Database, Bug, BarChart, Zap, Terminal } from 'lucide-react';
 
 const HowItWorks = () => {
   const steps = [
     {
       icon: <Globe />,
-      title: "Site Mapping",
-      desc: "Autonomous crawlers execute deep-traversal discovery to map your entire application perimeter.",
-      status: "MAP_COMPLETE"
+      title: "Neural Crawling",
+      desc: "Autonomous Playwright crawlers execute deep-traversal discovery to map your application's DOM and network clusters via high-speed Socket uplink.",
+      status: "MAP_PROTOCOL"
     },
     {
-      icon: <Shield />,
-      title: "Technical Audit",
-      desc: "Lighthouse-driven performance, accessibility, and security header validation at scale.",
-      status: "CORE_SCAN"
+      icon: <Zap />,
+      title: "Tactical Auditing",
+      desc: "Parallel Lighthouse and Newman audits evaluate performance, accessibility, and API integrity in isolated Worker Threads for zero-latency execution.",
+      status: "AUDIT_SYNC"
     },
     {
       icon: <Cpu />,
-      title: "Gemini Intelligence",
-      desc: "Gemini 2.5 Flash synthesizes cross-tool data to provide Senior Architect-level insights.",
-      status: "AI_ONLINE"
+      title: "Sentinel Intelligence",
+      desc: "The Sentinel 3.0 RAG engine synthesizes cross-tool telemetry to provide Senior Architect-level remediation insights and risk-stratified reports.",
+      status: "SENTINEL_AI"
     },
     {
-      icon: <BarChart />,
-      title: "API & Interaction",
-      desc: "Newman and Cypress protocols verify REST architectural integrity and UI flow stability.",
-      status: "TEST_SYNC"
+      icon: <Terminal />,
+      title: "Patching Console",
+      desc: "An integrated industrial IDE and Debug Console allow for real-time code patching, automated fix distillation, and instant remediation deployment.",
+      status: "FIX_EXECUTE"
     }
   ];
 
@@ -54,62 +54,51 @@ const HowItWorks = () => {
               initial={{ opacity: 0, y: 40 }}
               whileInView={{ opacity: 1, y: 0 }}
               whileHover={{ 
-                y: -8,
-                transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] }
+                y: -5,
+                transition: { duration: 0.2, ease: "easeOut" }
               }}
               viewport={{ once: true }}
               transition={{ duration: 0.8, delay: index * 0.1, ease: [0.16, 1, 0.3, 1] }}
-              className="glass-panel group p-6 relative overflow-hidden flex flex-col"
+              className="glass-panel group p-6 rounded-[32px] relative overflow-hidden flex flex-col border border-white/5 hover:border-primary/40 hover:bg-primary/5 transition-all duration-300 shadow-lg hover:shadow-primary/10"
             >
               {/* Animated Scanning Beam on Hover */}
-              <motion.div 
-                initial={{ top: '-100%' }}
-                whileHover={{ top: '100%' }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                className="absolute left-0 right-0 h-20 bg-gradient-to-b from-transparent via-primary/10 to-transparent z-0 pointer-events-none"
-              />
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/0 via-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              
+              <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-20 transition-all duration-500 group-hover:scale-110">
+                 <span className="font-mono text-[40px] font-black italic">STEP_{index + 1}</span>
+              </div>
 
               <div className="relative z-10 h-full flex flex-col items-start text-left flex-1">
                 <motion.div 
-                  whileHover={{ rotate: 15, scale: 1.1 }}
-                  className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center mb-6 text-primary border border-primary/20 shadow-neon-strong group-hover:bg-primary/20 transition-all duration-500"
+                   animate={{ y: [0, -4, 0] }}
+                   transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: index * 0.2 }}
+                   className="mb-4 p-3 bg-primary/10 rounded-2xl w-fit border border-primary/20 group-hover:bg-primary/20 group-hover:border-primary/40 transition-all duration-500"
                 >
-                  {React.cloneElement(step.icon, { size: 20, className: "group-hover:animate-pulse" })}
+                  {React.cloneElement(step.icon, { size: 20, className: "text-primary group-hover:scale-110 transition-transform duration-300" })}
                 </motion.div>
                 
-                <motion.h3 
-                  initial={{ opacity: 0, x: -10 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  transition={{ delay: (index * 0.1) + 0.3 }}
-                  className="font-outfit text-xl font-black mb-4 uppercase tracking-tight-mega premium-gradient-text leading-none"
-                >
+                <h3 className="text-base font-black uppercase tracking-tight text-white mb-2 group-hover:text-primary transition-colors relative z-10">
                   {step.title}
-                </motion.h3>
+                </h3>
                 
-                <motion.p 
-                  initial={{ opacity: 0 }}
-                  whileInView={{ opacity: 0.6 }}
-                  transition={{ delay: (index * 0.1) + 0.4 }}
-                  className="text-muted text-[9px] leading-[1.8] font-black uppercase tracking-[0.15em] mb-6 text-justify group-hover:opacity-80 transition-opacity" 
-                  style={{ textAlignLast: 'left' }}
+                <p className="text-[var(--eu-text-muted)] text-[10px] md:text-xs leading-relaxed font-outfit uppercase tracking-widest group-hover:opacity-100 transition-opacity text-justify relative z-10 mb-8" 
+                   style={{ textAlignLast: 'left' }}
                 >
                   {step.desc}
-                </motion.p>
+                </p>
                 
-                <div className="mt-auto w-full space-y-3">
-                  <div className="flex items-center justify-between text-[7px] font-black uppercase tracking-widest text-muted">
-                    <span>Protocol_{step.status}</span>
-                    <span className="text-primary/40">Active</span>
-                  </div>
-                  <div className="h-px w-full bg-gradient-to-r from-primary/20 to-transparent group-hover:from-primary/60 transition-all duration-700" />
+                <div className="mt-auto pt-6 border-t border-white/5 flex items-center justify-between w-full relative z-10">
+                   <span className="text-[9px] font-mono tracking-widest text-[var(--eu-text-muted)] uppercase italic">Protocol_{step.status}</span>
+                   <div className="flex items-center gap-1.5">
+                      <motion.div 
+                        animate={{ opacity: [1, 0.4, 1] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="size-1.5 rounded-full bg-primary shadow-[0_0_8px_var(--eu-glow)]" 
+                      />
+                      <span className="text-[7px] font-black text-primary/50 uppercase tracking-tighter">Live</span>
+                   </div>
                 </div>
               </div>
-
-              {/* Decorative Corner with Rotation */}
-              <motion.div 
-                whileHover={{ rotate: 90 }}
-                className="absolute top-0 right-0 w-12 h-12 border-t-2 border-r-2 border-primary/20 rounded-tr-3xl group-hover:border-primary transition-colors duration-700 pointer-events-none" 
-              />
             </motion.div>
           ))}
         </div>
