@@ -20,7 +20,7 @@ process.on('uncaughtException', (err) => {
 });
 
 const app = express();
-const PORT = 5005; // TACTICAL PORT DISPLACEMENT (FIX FOR GHOST 404s)
+const PORT = process.env.PORT || 5005; // CLOUD COMPATIBLE PORT (RENDER/HEROKU)
 
 // High-Capacity Data Substrate
 app.use(cors());
