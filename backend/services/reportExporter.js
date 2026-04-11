@@ -9,7 +9,8 @@ const path = require('path');
  * Embeds screenshots, full issue lists, chaos results, and AI insights.
  */
 const generatePDF = async (reportId) => {
-    const report = await ScanReport.findById(reportId);
+    const idString = reportId.toString();
+    const report = await ScanReport.findById(idString);
     if (!report) return null;
 
     const screenshotsDir = path.join(__dirname, '../screenshots');
@@ -337,7 +338,7 @@ ${report.chaosSubmissions?.length > 0 ? `
         const page = await browser.newPage();
         await page.setContent(html, { waitUntil: 'networkidle' });
 
-        const pdfPath = path.join(__dirname, `../reports/report-${reportId}.pdf`);
+        const pdfPath = path.join(__dirname, `../reports/report-${idString}.pdf`);
         const pdfDir = path.dirname(pdfPath);
         if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
 
@@ -348,7 +349,7 @@ ${report.chaosSubmissions?.length > 0 ? `
             margin: { top: '0', right: '0', bottom: '0', left: '0' }
         });
 
-        return `/reports/report-${reportId}.pdf`;
+        return `/reports/report-${idString}.pdf`;
     } finally {
         if (browser) await browser.close();
     }

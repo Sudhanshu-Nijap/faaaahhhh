@@ -96,11 +96,13 @@ async function runMasterOrchestrator(data) {
                 if (scope === 'single') {
                     await scanEngine.runSinglePageScan(reportId, baseUrl, activeSuite, (p, s) => emitProgress(5 + Math.round(p * 0.45), s));
                 } else {
-                    await scanEngine.runTargetedCrawlScan(reportId, baseUrl, activeSuite, (p, s) => emitProgress(5 + Math.round(p * 0.45), s));
+                    await scanEngine.runTargetedCrawlScan(reportId, baseUrl, activeSuite, (p, s) => emitProgress(5 + Math.round(p * 0.45), s), scope);
                 }
             })(),
             (async () => {
-                // Post early insight using the safe uplink
+                // Post early insight using the safe uplink (Skip for rescans to avoid duplication)
+                if (workerData.prevReportId) return;
+
                 try {
                     const insightSummary = "Sentinel AI is analyzing structural integrity and network protocols...";
                     const earlyMsg = await safeMessageUplink(chatId, 'report', `Early Diagnostic Insight for ${baseUrl}`, reportId, insightSummary);

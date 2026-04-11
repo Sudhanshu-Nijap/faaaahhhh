@@ -178,7 +178,7 @@ const ChatSidebar = ({
                   {chat.scanCount} scan{chat.scanCount > 1 ? 's' : ''}
                 </span>
               )}
-              {chat.lastMessage && (
+               {chat.lastMessage && (
                 <p className="text-[8px] text-slate-600 truncate">
                   {chat.lastMessage.type === 'report' ? 'Scan complete'
                     : chat.lastMessage.type === 'rescan' ? 'Rescan complete'

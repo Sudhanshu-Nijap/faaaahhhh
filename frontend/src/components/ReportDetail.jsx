@@ -101,7 +101,7 @@ const getTableColumns = (tab) => {
   }
 };
 
-const IssueTable = ({ data, columns, setRemediationCode, onAskAI }) => {
+const IssueTable = ({ data, columns, setRemediationCode, onAskAI, reportId }) => {
   const [expandedRowId, setExpandedRowId] = useState(null);
 
   if (!data || data.length === 0) return (
@@ -206,7 +206,7 @@ const IssueTable = ({ data, columns, setRemediationCode, onAskAI }) => {
                           onClick={(e) => { 
                             e.stopPropagation(); 
                             const issueTitle = row.issue || row.message || row.link || "this issue";
-                            onAskAI(`Analyze this finding from the report: ${issueTitle}`); 
+                            onAskAI(`Analyze this finding from the report: ${issueTitle}`, reportId); 
                           }}
                           className="px-3 py-1.5 bg-primary/10 hover:bg-primary text-white rounded-lg text-[9px] font-black uppercase tracking-widest border border-primary/30 transition-all flex items-center gap-2 shadow-neon group"
                         >
@@ -321,12 +321,14 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
     }
   }, [activeTab]);
 
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5005';
+
   useEffect(() => {
     let intervalId = null;
 
     const fetchReport = async () => {
       try {
-        const response = await axios.get(`http://localhost:5005/api/report/${reportId}`);
+        const response = await axios.get(`${API_BASE}/api/report/${reportId}`);
         const data = response.data;
         setReport(data);
 
@@ -430,7 +432,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
               });
               if (confirmed) {
                 try {
-                  await axios.delete(`http://localhost:5005/api/report/${reportId}`);
+                  await axios.delete(`${API_BASE}/api/report/${reportId}`);
                   if (onDeleted) onDeleted();
                   else onBack();
                   setAlert({ type: 'success', message: 'Neural trace purged successfully.' });
@@ -446,8 +448,8 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
           <button
             onClick={async () => {
               try {
-                const res = await axios.get(`http://localhost:5005/api/report/${reportId}/export`);
-                if (res.data.url) window.open(`http://localhost:5005${res.data.url}`, '_blank');
+                const res = await axios.get(`${API_BASE}/api/report/${reportId}/export`);
+                if (res.data.url) window.open(`${API_BASE}${res.data.url}`, '_blank');
               } catch (e) { setAlert({ type: 'error', message: 'PDF export protocol failed.' }); }
             }}
             className="flex-none flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-neon text-white"
@@ -459,7 +461,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
             onClick={async () => {
               try {
                 // Sends report to system Discord webhook configured in .env
-                await axios.post('http://localhost:5005/api/pulse', { reportId, type: 'discord' });
+                await axios.post(`${API_BASE}/api/pulse`, { reportId, type: 'discord' });
                 setAlert({ type: 'success', message: 'Discord Pulse Dispatched Successfully.' });
               } catch (e) { 
                 setAlert({ type: 'error', message: 'Dispatch Failed: ' + (e.response?.data?.error || 'Uplink Error') }); 
@@ -662,7 +664,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
                                       </button>
                                     )}
                                     <button
-                                      onClick={() => onAskAI(`Deep dive into this ${issue.severity} finding: ${issue.title || issue.issue}. Give me a detailed remediation plan.`)}
+                                      onClick={() => onAskAI(`Deep dive into this ${issue.severity} finding: ${issue.title || issue.issue}. Give me a detailed remediation plan.`, reportId)}
                                       className="flex-1 py-5 bg-primary/20 hover:bg-primary text-white border border-primary/40 rounded-2xl text-[11px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-4 transition-all shadow-neon group font-outfit"
                                     >
                                       <Bot size={18} className="group-hover:scale-110 transition-transform" />
@@ -810,7 +812,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
                 title={tabs.find(t => t.id === activeTab)?.label || 'Diagnostic'} 
                 icon={tabs.find(t => t.id === activeTab)?.icon || <Activity size={14} />} 
               />
-              <IssueTable data={getTabData(report, activeTab)} columns={getTableColumns(activeTab)} setRemediationCode={setRemediationCode} onAskAI={onAskAI} />
+              <IssueTable data={getTabData(report, activeTab)} columns={getTableColumns(activeTab)} setRemediationCode={setRemediationCode} onAskAI={onAskAI} reportId={reportId} />
             </motion.div>
           )}
 
@@ -820,7 +822,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
               {(report.screenshots || []).map((s, i) => (
                 <div key={i} className="group glass-euphoria p-3 rounded-2xl space-y-3 border border-[var(--eu-glass-border)] hover:border-eu-accent/30 transition-all duration-700 hover:-translate-y-1 shadow-xl">
                   <div className="aspect-video overflow-hidden rounded-xl bg-[var(--eu-bg-void)]/60 border border-[var(--eu-glass-border)] shadow-inner relative">
-                    <img src={`http://localhost:5005${s.path}`} alt={s.page} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 grayscale group-hover:grayscale-0" />
+                    <img src={`${API_BASE}${s.path}`} alt={s.page} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 grayscale group-hover:grayscale-0" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-3">
                       <p className="text-[8px] font-black text-white uppercase tracking-widest">{s.page}</p>
                     </div>
@@ -831,7 +833,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
                       <p className="text-[11px] font-black text-white truncate max-w-[150px] font-outfit">{s.page}</p>
                     </div>
                     <button
-                      onClick={() => setPreviewImage(`http://localhost:5000${s.path}`)}
+                      onClick={() => setPreviewImage(`${API_BASE}${s.path}`)}
                       className="size-8 bg-[var(--eu-bg-void)]/60 rounded-lg flex items-center justify-center text-[var(--eu-text-main)] opacity-40 group-hover:text-eu-accent transition-all border border-[var(--eu-glass-border)] shadow-inner"
                     >
                       <ExternalLink size={12} />

@@ -35,13 +35,37 @@ class ChatAgent {
         const msg = message.toLowerCase();
 
         // --- LAYER 0: Rule Engine (Type A - Deterministic Counts) ---
-        if (msg.includes("how many") || msg.includes("count") || msg.includes("total") || msg.includes("list all")) {
-            if (msg.includes("broken link") || msg.includes("dead link")) return `There are exactly **${reportData.brokenLinks?.length || 0}** broken links in this scan.`;
-            if (msg.includes("security issue") || msg.includes("vulnerability") || msg.includes("security")) return `There are **${reportData.securityIssues?.length || 0}** security vulnerabilities detected.`;
-            if (msg.includes("accessibility")) return `I found **${reportData.accessibilityIssues?.length || 0}** accessibility violations.`;
-            if (msg.includes("ui") || msg.includes("ux") || msg.includes("layout")) return `The UI analysis detected **${(reportData.uiIssues?.length || 0) + (reportData.responsiveIssues?.length || 0)}** design inconsistencies.`;
-            if (msg.includes("network") || msg.includes("api") || msg.includes("http")) return `There are **${reportData.networkLogs?.length || 0}** network failures captured in this audit.`;
-            if (msg.includes("console") || msg.includes("error")) return `I detected **${reportData.consoleErrors?.length || 0}** active console errors in this scan.`;
+        if (msg.includes("how many") || msg.includes("count") || msg.includes("total") || msg.includes("list all") || msg.includes("stat")) {
+            // Handle "total" or "all" keyword for a comprehensive summary
+            if (msg.includes("total") || msg.includes("all") || msg.includes("summary")) {
+                const broken = reportData.brokenLinks?.length || 0;
+                const security = reportData.securityIssues?.length || 0;
+                const a11y = reportData.accessibilityIssues?.length || 0;
+                const ui = (reportData.uiIssues?.length || 0) + (reportData.responsiveIssues?.length || 0);
+                const network = reportData.networkLogs?.length || 0;
+                const console = reportData.consoleErrors?.length || 0;
+                const total = broken + security + a11y + ui + network + console;
+
+                return `The system detected **${total}** total anomalies across the topology:\n- **${broken}** Broken Link(s)\n- **${console}** Console Error(s)\n- **${a11y}** Accessibility Violation(s)\n- **${ui}** UI/Layout Inconsistencies\n- **${network}** Network Failure(s)\n- **${security}** Security Risk(s)`;
+            }
+
+            if (msg.includes("broken link") || msg.includes("dead link") || msg.includes("404")) 
+                return `There are exactly **${reportData.brokenLinks?.length || 0}** broken links in this scan.`;
+            
+            if (msg.includes("security") || msg.includes("vulnerability") || msg.includes("threat") || msg.includes("risk")) 
+                return `There are **${reportData.securityIssues?.length || 0}** security vulnerabilities detected.`;
+            
+            if (msg.includes("accessibility") || msg.includes("a11y") || msg.includes("compliance")) 
+                return `I found **${reportData.accessibilityIssues?.length || 0}** accessibility violations.`;
+            
+            if (msg.includes("ui") || msg.includes("ux") || msg.includes("layout") || msg.includes("design")) 
+                return `The UI analysis detected **${(reportData.uiIssues?.length || 0) + (reportData.responsiveIssues?.length || 0)}** design inconsistencies.`;
+            
+            if (msg.includes("network") || msg.includes("api") || msg.includes("http") || msg.includes("request")) 
+                return `There are **${reportData.networkLogs?.length || 0}** network failures captured in this audit.`;
+            
+            if (msg.includes("console") || msg.includes("js error") || (msg.includes("error") && !msg.includes("link") && !msg.includes("a11y"))) 
+                return `I detected **${reportData.consoleErrors?.length || 0}** active console errors in this scan.`;
         }
 
         // --- LAYER 1: Knowledge Base (Type A+ - Advanced RAG / Pure Deterministic) ---
@@ -75,8 +99,10 @@ class ChatAgent {
             ...(reportData.securityIssues || []),
             ...(reportData.accessibilityIssues || []),
             ...(reportData.uiIssues || []),
+            ...(reportData.responsiveIssues || []),
             ...(reportData.brokenLinks || []),
-            ...(reportData.consoleErrors || [])
+            ...(reportData.consoleErrors || []),
+            ...(reportData.formIssues || [])
         ];
 
         const mentionedIssues = allIssues.filter(i => {
@@ -97,13 +123,15 @@ class ChatAgent {
         const systemPrompt = `You are the Sentinel AI Advanced Diagnostic Engine.
         
 STRATEGY: RAG (Retrieval Augmented Generation)
-1. You have been provided with SURGICAL CONTEXT from a real scan of: ${reportData.url}
-2. ONLY answer using the provided context. If the data is not in the context, state "Data not found in the current audit."
-3. If an issue is mentioned in "specifically_mentioned_in_scan", prioritize those details.
-4. Provide production-ready, high-accuracy remediation code (Node.js, React, or CSS).
-5. Format your output with clear Markdown headers.
-
-CONTEXT (Surgical Scan Data):
+1. You have been provided with SURGICAL CONTEXT from an industry-grade audit of: ${reportData.url}
+2. ONLY answer using the provided context. If information is missing, state "The diagnostic telemetry for this query is missing from the current audit."
+3. FOR EVERY ISSUE MENTIONED, YOU MUST PROVIDE:
+   - **Root Cause**: What exactly is broken in the code/DOM.
+   - **The Fix**: High-fidelity, production-ready code snippets (React, CSS, or Node.js).
+   - **Impact**: Why fixing this improves the platform (SEO/UX/Performance).
+4. Use professional, industrial terminology and format with clear Markdown headers.
+ 
+CONTEXT (Live Scan Telemetry):
 ${JSON.stringify(context, null, 2)}`;
 
         try {

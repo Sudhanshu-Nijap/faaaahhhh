@@ -124,7 +124,8 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
 
         const context = await browser.newContext({
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
-            viewport: { width: 1440, height: 900 }
+            viewport: { width: 1440, height: 900 },
+            deviceScaleFactor: 2 // High DPI for production accuracy
         });
         const page = await context.newPage();
         
@@ -167,22 +168,54 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
         // --- High-Resiliency Navigation Cycle ---
         const startTime = Date.now();
         try {
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+            await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
         } catch (navError) {
             console.warn(`[scanEngine]: Neural Navigation slow for ${url}: ${navError.message}`);
+            // Fallback to simpler wait if networkidle hangs
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
         }
         const loadTime = Date.now() - startTime;
         
         // --- 2b. Converged Telemetry Capture ---
-        // Wait for potential dynamic content to settle but much faster
-        await page.waitForTimeout(100); 
+        emitProgress(25, 'Stabilizing page & identifying UI patterns...');
+        
+        // Hide common overlays (cookie banners, popups) for cleaner screenshots
+        await page.evaluate(() => {
+            const selectors = [
+                '[id*="cookie"]', '[class*="cookie"]', 
+                '[id*="consent"]', '[class*="consent"]',
+                '[id*="banner"]', '[class*="banner"]',
+                '.modal-backdrop', '.modal-open',
+                '[class*="overlay"]', '[id*="overlay"]',
+                '#GdprBanner', '.cc-banner'
+            ];
+            selectors.forEach(s => {
+                try {
+                    document.querySelectorAll(s).forEach(el => {
+                        el.style.display = 'none';
+                        el.style.pointerEvents = 'none';
+                        el.style.opacity = '0';
+                    });
+                } catch(e) {}
+            });
+        }).catch(() => {});
+
+        await page.waitForTimeout(1000); // Wait for animations to settle
 
         const screenshotName = `screenshot-${Date.now()}.png`;
         const screenshotPath = path.join(__dirname, '../screenshots', screenshotName);
         
-        emitProgress(20, 'Capturing visual states & UI patterns...');
-        // Optimization: Use standard viewport screenshot for speed (skip stitching)
-        await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
+        emitProgress(30, 'Capturing high-fidelity visual context...');
+        // Accuracy Optimization: Use fullPage screenshot with moderate delay
+        await page.screenshot({ 
+            path: screenshotPath, 
+            fullPage: true, 
+            animations: 'disabled',
+            timeout: 10000 
+        }).catch((e) => {
+            console.warn('[scanEngine]: Full-page screenshot failed, falling back to viewport:', e.message);
+            return page.screenshot({ path: screenshotPath, fullPage: false });
+        });
 
         // 2c. Interaction Audit: Forms
         let formIssues = [];
@@ -201,17 +234,21 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
                 Array.from(document.querySelectorAll('a[href]'))
                     .map(a => a.href)
                     .filter(href => href.startsWith('http'))
-                    .slice(0, 2) // Extreme speed for hackathon
+                    .slice(0, 10) // Production-ready sample size
             );
             
             // Parallelize link checks with Promise.all for speed
             await Promise.all(links.map(async (link) => {
                 try {
                     const res = await axios.head(link, { 
-                        timeout: 500, // Brutal timeout for hackathon
+                        timeout: 3000, 
                         validateStatus: () => true,
                         headers: { 'User-Agent': 'Sentinel-Turbo-Bot/1.0' }
-                    }).catch(() => null);
+                    }).catch(async () => {
+                        // Fallback to GET if HEAD fails
+                        return await axios.get(link, { timeout: 5000, validateStatus: () => true }).catch(() => null);
+                    });
+                    
                     if (!res || res.status >= 400) {
                         brokenLinks.push({ page: url, link, status: res ? res.status : 0, recommendation: 'Update or remove broken link.' });
                     }
@@ -271,18 +308,22 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
         });
         throw criticalError;
     } finally {
-        if (!isBrowserClosed) await browser.close();
+        if (browser && !isBrowserClosed) await browser.close();
     }
 };
 
 /**
  * runTargetedCrawlScan - Lean site-wide audit (converged)
  */
-const runTargetedCrawlScan = async (reportId, url, tests, emitProgress) => {
-    console.log(`[scanEngine]: Initiating Converged Site Crawl: ${url}`);
+const runTargetedCrawlScan = async (reportId, url, tests, emitProgress, scope = 'site') => {
+    console.log(`[scanEngine]: Initiating Converged Site Crawl: ${url} | Scope: ${scope}`);
     
     // 1. Universal Discovery Phase
-    const pages = await crawler.crawlWebsite(reportId, url, emitProgress, { maxPages: 3, maxDepth: 0 });
+    const pages = await crawler.crawlWebsite(reportId, url, emitProgress, { 
+        scope: scope,
+        maxPages: scope === 'site' ? 20 : 1, 
+        maxDepth: scope === 'site' ? 2 : 0 
+    });
     
     // Parallel Diagnostic Surge - Only diagnostic entry page for speed
     // If multiple pages are found, they're only tracked in the discovery stage

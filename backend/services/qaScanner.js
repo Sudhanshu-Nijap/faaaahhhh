@@ -42,8 +42,16 @@ async function runDedicatedScan(url) {
             logLevel: 'silent', 
             onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
             settings: {
-                throttlingMethod: 'provided',
-                onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo']
+                throttlingMethod: 'simulate', // Faster, more stable scores
+                onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
+                skipAudits: ['screenshot-thumbnails', 'final-screenshot'], // Playwright handles screenshots better
+                screenEmulation: {
+                    mobile: false,
+                    width: 1350,
+                    height: 940,
+                    deviceScaleFactor: 1,
+                    disabled: false,
+                }
             }
         });
 

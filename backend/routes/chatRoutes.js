@@ -95,6 +95,14 @@ router.post('/thread/:chatId/message', async (req, res) => {
 
         if (global.io) {
             global.io.to(req.params.chatId).emit('new-message', msg);
+
+            // Global User Room Update for Sidebar Refresh
+            const chat = await Chat.findById(req.params.chatId);
+            if (chat?.userId) {
+                global.io.to(`user_${chat.userId.toString()}`).emit('thread-update', { 
+                    chatId: req.params.chatId 
+                });
+            }
         }
 
         res.json(msg);
@@ -164,6 +172,14 @@ router.post('/thread/:chatId/ask', async (req, res) => {
 
         if (global.io) {
             global.io.to(req.params.chatId).emit('new-message', aiMsg);
+            
+            // Global User Room Update for Sidebar Refresh
+            const chat = await Chat.findById(req.params.chatId);
+            if (chat?.userId) {
+                global.io.to(`user_${chat.userId.toString()}`).emit('thread-update', { 
+                    chatId: req.params.chatId 
+                });
+            }
         }
 
         res.json({ reply: answer, message: aiMsg });

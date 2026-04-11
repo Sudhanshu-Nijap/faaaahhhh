@@ -89,16 +89,17 @@ const ScanSummaryCard = ({ message, onViewReport, isRescan }) => {
         </div>
 
         {/* Middle: Issue Counts */}
-        <div className="px-4 py-3 grid grid-cols-4 gap-2 border-b border-white/5">
+        <div className="px-4 py-3 grid grid-cols-5 gap-1 border-b border-white/5">
           {[
             { label: 'Broken', val: stats?.brokenLinks, color: 'text-red-400' },
             { label: 'Console', val: stats?.consoleErrors, color: 'text-yellow-400' },
             { label: 'A11y', val: stats?.accessibilityIssues, color: 'text-blue-400' },
+            { label: 'UI/UX', val: (reportSummary?.reportData?.uiIssues?.length || 0) + (reportSummary?.reportData?.responsiveIssues?.length || 0), color: 'text-eu-accent' },
             { label: 'Network', val: stats?.networkIssues, color: 'text-slate-400' },
           ].map(({ label, val, color }) => (
             <div key={label} className="text-center">
-              <p className={`text-base font-black font-mono ${val > 0 ? color : 'text-slate-600'}`}>{val ?? 0}</p>
-              <p className="text-[7px] font-black uppercase tracking-wider text-slate-600">{label}</p>
+              <p className={`text-sm font-black font-mono ${val > 0 ? color : 'text-slate-600'}`}>{val ?? 0}</p>
+              <p className="text-[7px] font-black uppercase tracking-wider text-slate-600 truncate">{label}</p>
             </div>
           ))}
         </div>

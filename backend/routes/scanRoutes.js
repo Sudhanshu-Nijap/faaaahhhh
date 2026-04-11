@@ -320,6 +320,14 @@ async function startScan(baseUrl, userId, force = false, chaosIntensity = 'stand
     });
     await report.save();
 
+    // Global User Room Update: Notify dashboard that a new report (in-progress) exists
+    if (global.io) {
+        global.io.to(`user_${userId.toString()}`).emit('report-update', { 
+            type: 'scan_started', 
+            reportId: report._id.toString() 
+        });
+    }
+
     // Launch background processor
     runFullScan(report._id, baseUrl, chaosIntensity, singlePageOnly, finalModules, scope, mode, chatId, previousReport?._id).catch(e => {
         console.error(`[Pipeline Critical Failure]: ${e.message}`);
@@ -431,17 +439,26 @@ async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = f
                     timestamp: new Date().toISOString()
                 }).catch(e => console.error(`[Callback Failure]: ${e.message}`));
             }
-        });
+            if (code === 0 && global.io) {
+                global.io.to(reportId.toString()).emit('scan-progress', {
+                    reportId: reportId.toString(),
+                    chatId: chatId ? chatId.toString() : null,
+                    percent: 100,
+                    stage: 'Scan complete.',
+                    status: 'completed'
+                });
 
-        if (code === 0 && global.io) {
-            global.io.to(reportId.toString()).emit('scan-progress', {
-                reportId: reportId.toString(),
-                chatId: chatId ? chatId.toString() : null,
-                percent: 100,
-                stage: 'Scan complete.',
-                status: 'completed'
-            });
-        }
+                // Global User Room Update: Ensure all views (Dashboard, Sidebar) refresh
+                ScanReport.findById(reportId).then(report => {
+                    if (report?.userId) {
+                        global.io.to(`user_${report.userId.toString()}`).emit('report-update', { 
+                            type: 'scan_completed', 
+                            reportId: reportId.toString() 
+                        });
+                    }
+                });
+            }
+        });
     });
 }
 

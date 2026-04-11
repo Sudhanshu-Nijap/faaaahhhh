@@ -49,7 +49,7 @@ function App() {
   const [scanProgress, setScanProgress] = useState(null);
   const [alert, setAlert] = useState(null);
   const [confirmModal, setConfirmModal] = useState(null);
-  const [pendingChatMessage, setPendingChatMessage] = useState(null);
+  const [pendingChat, setPendingChat] = useState(null);
   const [scheduleTargetUrl, setScheduleTargetUrl] = useState(null);
 
 
@@ -83,7 +83,8 @@ function App() {
     try {
       const userId = localStorage.getItem('userId');
       if (!userId) return;
-      const { data } = await axios.get(`http://localhost:5005/api/reports?userId=${userId}`);
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5005';
+      const { data } = await axios.get(`${API_BASE}/api/reports?userId=${userId}`);
       setReports(data);
     } catch (err) {
       console.error("Failed to sync reports for global intelligence", err);
@@ -94,7 +95,7 @@ function App() {
     try {
       const userId = localStorage.getItem('userId');
       if (!userId) return;
-      const { data } = await axios.get(`http://localhost:5005/api/scan/active/${userId}`);
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:5005'}/api/scan/active/${userId}`);
       if (data && data._id) {
         setActiveReportId(data._id);
         // REMOVED: setRefreshKey - this caused the infinite loop
@@ -125,14 +126,14 @@ function App() {
 
   // Initial load of scan progress from cache
   useEffect(() => {
-     const cached = localStorage.getItem('sentinel_pending_progress');
-     if (cached) {
-       try {
-         setScanProgress(JSON.parse(cached));
-       } catch (e) {
-         localStorage.removeItem('sentinel_pending_progress');
-       }
-     }
+    const cached = localStorage.getItem('sentinel_pending_progress');
+    if (cached) {
+      try {
+        setScanProgress(JSON.parse(cached));
+      } catch (e) {
+        localStorage.removeItem('sentinel_pending_progress');
+      }
+    }
   }, []);
 
   const socketRef = useRef(null);
@@ -140,39 +141,57 @@ function App() {
   // 1. Persistent Socket Initialization
   useEffect(() => {
     if (!socketRef.current) {
-        socketRef.current = io('http://localhost:5005', {
-            reconnectionAttempts: 10
-        });
-        
-        const socket = socketRef.current;
-        
-        socket.on('connect', () => {
-          console.log('[Socket]: Tactical uplink established.');
-          // If we had a live report, rejoin its room on reconnection
-          const currentLiveId = localStorage.getItem('sentinel_live_report_id');
-          if (currentLiveId) {
-            socket.emit('join-room', currentLiveId);
-          }
-        });
+      socketRef.current = io('http://localhost:5005', {
+        reconnectionAttempts: 10
+      });
 
-        socket.on('scan-progress', (data) => {
-          setScanProgress(data);
-          localStorage.setItem('sentinel_pending_progress', JSON.stringify(data));
+      const socket = socketRef.current;
 
-          if (data.status === 'completed' || data.status === 'failed') {
-            localStorage.removeItem('sentinel_pending_progress');
-            localStorage.removeItem('sentinel_live_report_id');
-            setRefreshKey(prev => prev + 1);
-            setTimeout(() => setScanProgress(null), 5000);
-          }
-        });
+      socket.on('connect', () => {
+        console.log('[Socket]: Tactical uplink established.');
+
+        // Join specialized rooms
+        const userId = localStorage.getItem('userId');
+        if (userId) {
+          socket.emit('join-user', userId);
+          console.log(`[Socket]: Subscribed to global user stream: user_${userId}`);
+        }
+
+        const currentLiveId = localStorage.getItem('sentinel_live_report_id');
+        if (currentLiveId) {
+          socket.emit('join-room', currentLiveId);
+        }
+      });
+
+      // Global State Synchronizers
+      socket.on('report-update', (data) => {
+        console.log('[Socket]: Global report update detected:', data);
+        setRefreshKey(prev => prev + 1);
+      });
+
+      socket.on('thread-update', (data) => {
+        console.log('[Socket]: Neural thread update detected:', data);
+        setRefreshKey(prev => prev + 1);
+      });
+
+      socket.on('scan-progress', (data) => {
+        setScanProgress(data);
+        localStorage.setItem('sentinel_pending_progress', JSON.stringify(data));
+
+        if (data.status === 'completed' || data.status === 'failed') {
+          localStorage.removeItem('sentinel_pending_progress');
+          localStorage.removeItem('sentinel_live_report_id');
+          setRefreshKey(prev => prev + 1);
+          setTimeout(() => setScanProgress(null), 5000);
+        }
+      });
     }
 
     return () => {
-        if (socketRef.current) {
-            socketRef.current.disconnect();
-            socketRef.current = null;
-        }
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
   }, []);
 
@@ -363,11 +382,11 @@ function App() {
           {isLoggedIn && (
             <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 md:gap-3">
               {[
-                { id: 'ide', label: 'DEBUG', icon: <Brain size={15} />, title: 'AI Neural Debugger' },
                 { id: 'qa', label: 'CHAT', icon: <Bot size={15} />, title: 'Neural Assistant' },
+                { id: 'analyze', label: 'ANALYZE', icon: <Activity size={15} />, title: 'Global Intelligence' },
                 { id: 'learn', label: 'LEARN', icon: <Cpu size={15} />, title: 'Cognitive Learning Hub' },
                 { id: 'schedule', label: 'SCHEDULE', icon: <Calendar size={15} />, title: 'Neural Scheduler' },
-                { id: 'analyze', label: 'ANALYZE', icon: <Activity size={15} />, title: 'Global Intelligence' },
+                { id: 'ide', label: 'DEBUG', icon: <Brain size={15} />, title: 'AI Neural Debugger' },
               ].map(v => (
                 <button
                   key={v.id}
@@ -379,11 +398,10 @@ function App() {
                     setActiveView(v.id);
                     setViewingReportId(null);
                   }}
-                  className={`px-3 py-2 md:px-5 md:py-2.5 rounded-full transition-all border flex items-center gap-2.5 group ${
-                    activeView === v.id 
-                    ? 'bg-primary border-primary text-white shadow-neon scale-105' 
-                    : 'bg-white/5 border-white/10 text-primary hover:bg-primary/10 hover:border-primary/40'
-                  }`}
+                  className={`px-3 py-2 md:px-5 md:py-2.5 rounded-full transition-all border flex items-center gap-2.5 group ${activeView === v.id
+                      ? 'bg-primary border-primary text-white shadow-neon scale-105'
+                      : 'bg-white/5 border-white/10 text-primary hover:bg-primary/10 hover:border-primary/40'
+                    }`}
                   title={v.title}
                 >
                   <div className={activeView === v.id ? "animate-pulse" : ""}>{v.icon}</div>
@@ -566,8 +584,8 @@ function App() {
                           setRefreshKey(prev => prev + 1);
                           setViewingReportId(null);
                         }}
-                        onAskAI={(msg) => {
-                          setPendingChatMessage(msg);
+                        onAskAI={(msg, rId) => {
+                          setPendingChat({ message: msg, reportId: rId });
                           setViewingReportId(null);
                           setActiveView('qa');
                         }}
@@ -594,8 +612,10 @@ function App() {
                         onRefresh={() => setRefreshKey(prev => prev + 1)}
                         onResetTarget={() => { setActiveChatId(null); setActiveView('qa'); }}
                         globalScanProgress={scanProgress}
-                        pendingMessage={pendingChatMessage}
-                        onMessageConsumed={() => setPendingChatMessage(null)}
+                        pendingMessage={pendingChat?.message}
+                        pendingReportId={pendingChat?.reportId}
+                        onMessageConsumed={() => setPendingChat(null)}
+                        onChatActivated={setActiveChatId}
                         reports={reports}
                         setAlert={setAlert}
                         confirm={confirm}
@@ -639,8 +659,8 @@ function App() {
                     <div className="text-lg font-black font-mono text-white tracking-tighter leading-none">{scanProgress.percent}%</div>
                     <div className="text-[8px] font-black text-slate-500 uppercase tracking-widest mt-1">Completion</div>
                   </div>
-                  
-                  <button 
+
+                  <button
                     onClick={() => {
                       setScanProgress(null);
                       localStorage.removeItem('sentinel_pending_progress');
@@ -653,14 +673,21 @@ function App() {
                 </div>
               </div>
 
-              <div className="relative w-full h-2 bg-[var(--eu-bg-void)] rounded-full overflow-hidden p-[1px] border border-[var(--eu-glass-border)]">
+              <div className="relative w-full h-2.5 bg-black/40 rounded-full overflow-hidden p-[1px] border border-white/10 shadow-inner">
                 <motion.div
-                  className="h-full rounded-full bg-gradient-to-r from-eu-accent via-violet-500 to-cyan-400 relative overflow-hidden"
+                  className="h-full rounded-full bg-gradient-to-r from-eu-accent via-violet-500 to-cyan-400 relative"
                   initial={{ width: '0%' }}
                   animate={{ width: `${scanProgress.percent}%` }}
                   transition={{ duration: 0.8, ease: "circOut" }}
                 >
-                  <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.4)_50%,transparent_100%)] w-20 h-full animate-[shimmer_2s_infinite]" />
+                  {/* Premium Shimmer Effect */}
+                  <motion.div
+                    animate={{ x: ['-100%', '200%'] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent w-full h-full"
+                  />
+                  {/* Subtle Glow */}
+                  <div className="absolute inset-0 shadow-[0_0_15px_rgba(var(--eu-accent-rgb),0.5)]" />
                 </motion.div>
               </div>
             </div>
@@ -779,8 +806,8 @@ function App() {
 
       <AnimatePresence>
         {scheduleTargetUrl && (
-          <AddJobModal 
-            isOpen={!!scheduleTargetUrl} 
+          <AddJobModal
+            isOpen={!!scheduleTargetUrl}
             onClose={() => setScheduleTargetUrl(null)}
             initialUrl={scheduleTargetUrl}
             setAlert={setAlert}

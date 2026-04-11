@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const ScanReport = require('../models/ScanReport');
 const reportExporter = require('./reportExporter');
-const { Blob } = require('buffer');
+const FormData = require('form-data');
 
 /**
  * 🛰️ Dedicated Discord Dispatch Service
@@ -12,21 +12,26 @@ const { Blob } = require('buffer');
 
 const dispatchReport = async (reportId) => {
     try {
-        const report = await ScanReport.findById(reportId);
+        const idString = reportId.toString();
+        const report = await ScanReport.findById(idString);
         if (!report) throw new Error('Report not found');
         
         const targetWebhook = process.env.DISCORD_WEBHOOK_URL;
         if (!targetWebhook) {
-            console.warn('[DiscordService]: No webhook URL configurared. Pulse skipped.');
+            console.warn('[DiscordService]: No webhook URL configured. Pulse skipped.');
             return;
         }
 
         // 1. Generate/Locate PDF Snapshot
-        console.log(`[DiscordService]: Syncing PDF for ${reportId}...`);
-        const pdfUrl = await reportExporter.generatePDF(reportId);
-        const pdfPath = path.join(__dirname, '..', pdfUrl);
+        console.log(`[DiscordService]: Syncing PDF for ${idString}...`);
+        const pdfUrl = await reportExporter.generatePDF(idString);
+        
+        // pdfUrl is typically /reports/report-ID.pdf
+        const pdfFilename = path.basename(pdfUrl);
+        const pdfPath = path.join(__dirname, '..', 'reports', pdfFilename);
 
         if (!fs.existsSync(pdfPath)) {
+            console.error(`[DiscordService]: PDF not found at ${pdfPath}`);
             throw new Error('PDF Snapshot missing from registry.');
         }
 
@@ -39,7 +44,7 @@ const dispatchReport = async (reportId) => {
             description: `Neural analysis complete for **${report.url}**`,
             color: report.healthScore >= 80 ? 0x22c55e : report.healthScore >= 50 ? 0xf97316 : 0xdc2626,
             fields: [
-                { name: '❤️ Health Score', value: `${report.healthScore || 'N/A'}%`, inline: true },
+                { name: '❤️ Health Score', value: `${report.healthScore || '0'}%`, inline: true },
                 { name: '📄 Nodes Scanned', value: `${report.pagesCrawled || 1}`, inline: true },
                 { name: '🚨 Anomalies', value: `${(report.brokenLinks?.length || 0) + (report.consoleErrors?.length || 0)} detected`, inline: true }
             ],
@@ -47,7 +52,6 @@ const dispatchReport = async (reportId) => {
             timestamp: new Date()
         };
 
-        // If comparison exists, add it to embed
         if (report.comparison && report.comparison.scoreDelta !== undefined) {
             const deltaSign = report.comparison.scoreDelta >= 0 ? '+' : '';
             embed.fields.push({ 
@@ -57,31 +61,32 @@ const dispatchReport = async (reportId) => {
             });
         }
 
-        // 3. Dispatch Multipart Payload via Native Fetch (Node v22+)
-        const formData = new FormData();
-        formData.append('payload_json', JSON.stringify({
+        // 3. Dispatch via Axios + form-data (Gold Standard for Node Attachments)
+        const form = new FormData();
+        form.append('payload_json', JSON.stringify({
             content: `⚡ **Dispatch Received:** Tactical report for **${hostname}** ready for review.`,
             embeds: [embed]
         }));
         
-        const pdfBuffer = fs.readFileSync(pdfPath);
-        formData.append('file', new Blob([pdfBuffer], { type: 'application/pdf' }), `Sentinel-Report-${hostname}.pdf`);
-
-        console.log(`[DiscordService]: Pushing telemetry to Discord...`);
-        const response = await fetch(targetWebhook, {
-            method: 'POST',
-            body: formData
+        form.append('file', fs.createReadStream(pdfPath), {
+            filename: `Sentinel-Report-${hostname}.pdf`,
+            contentType: 'application/pdf',
         });
 
-        if (!response.ok) {
-            const errBody = await response.text();
-            throw new Error(`Discord Uplink Failed: ${response.status} - ${errBody}`);
+        console.log(`[DiscordService]: Uploading attachment to Discord...`);
+        const response = await axios.post(targetWebhook, form, {
+            headers: form.getHeaders(),
+        });
+
+        if (response.status !== 200 && response.status !== 204) {
+            throw new Error(`Discord Uplink Failed: ${response.status} - ${response.statusText}`);
         }
 
         console.log(`✅ [DiscordService]: Pulse broadcast successful for ${hostname}`);
         return true;
     } catch (error) {
-        console.error(`[DiscordService Error]: ${error.message}`);
+        const errorMsg = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+        console.error(`[DiscordService Error]: ${errorMsg}`);
         return false;
     }
 };

@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -26,6 +27,24 @@ const PORT = process.env.PORT || 5005; // CLOUD COMPATIBLE PORT (RENDER/HEROKU)
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// PRE-AUTHORIZED STATIC SUBSTRATE (SERVED BEFORE NEURAL GATING)
+app.use('/screenshots', express.static(path.join(__dirname, 'screenshots')));
+
+app.get('/reports/:filename', (req, res) => {
+    // Resolve absolute path from repo root for maximum production stability
+    const filePath = path.join(__dirname, 'reports', req.params.filename);
+    console.log(`[NeuralServe]: Requesting file: ${filePath}`);
+    
+    if (fs.existsSync(filePath)) {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${req.params.filename}"`);
+        res.sendFile(filePath);
+    } else {
+        console.error(`[NeuralFault]: File not found: ${filePath}`);
+        res.status(404).json({ error: 'Diagnostic report not found in storage substrate.' });
+    }
+});
 
 // Tactical Request Trace Middleware
 app.use((req, res, next) => {
@@ -165,8 +184,6 @@ app.post('/neural-debug-engine-v1-upload', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.use('/screenshots', express.static(path.join(__dirname, 'screenshots')));
-
 // ── Priority 2: Infrastructure Layers (Unified Neural Routing) ──
 
 // Routes
@@ -217,6 +234,11 @@ io.on('connection', (socket) => {
     socket.on('join-room', (reportId) => {
         socket.join(reportId);
         console.log(`Socket ${socket.id} joined Tactical Room: ${reportId}`);
+    });
+
+    socket.on('join-user', (userId) => {
+        socket.join(`user_${userId}`);
+        console.log(`Socket ${socket.id} joined Global User Room: user_${userId}`);
     });
 
     socket.on('join-chat', (chatId) => {

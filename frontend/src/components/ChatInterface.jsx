@@ -142,7 +142,9 @@ const ChatInterface = ({
   onResetTarget, 
   globalScanProgress,
   pendingMessage,
+  pendingReportId,
   onMessageConsumed,
+  onChatActivated,
   activeView = 'chat',
   onViewChange,
   reports = [],
@@ -193,11 +195,11 @@ const ChatInterface = ({
 
   // Handle pending message from parent (e.g. redirected from report view)
   useEffect(() => {
-    if (pendingMessage && activeChatId) {
-       handleSend(null, pendingMessage);
+    if (pendingMessage && (activeChatId || pendingReportId)) {
+       handleSend(null, pendingMessage, pendingReportId);
        if (onMessageConsumed) onMessageConsumed();
     }
-  }, [pendingMessage, activeChatId]);
+  }, [pendingMessage, activeChatId, pendingReportId]);
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   useEffect(scrollToBottom, [messages, isTyping]);
@@ -270,7 +272,7 @@ const ChatInterface = ({
     }));
   };
 
-  const handleSend = async (e, manualInput = null) => {
+  const handleSend = async (e, manualInput = null, manualReportId = null) => {
     if (e) e.preventDefault();
     const finalInput = (manualInput || input).trim();
     if (!finalInput || isTyping || isScanning) return;
@@ -278,8 +280,30 @@ const ChatInterface = ({
 
     const userId = localStorage.getItem('userId');
 
-    // ── Case 1: No active chat → create thread + start scan ──
-    if (!activeChatId) {
+    let currentChatId = activeChatId;
+
+    // ── Pre-flight: Resolve thread context if redirected from a report ──
+    if (!currentChatId && manualReportId) {
+      setIsTyping(true);
+      try {
+        const { data: report } = await axios.get(`http://localhost:5005/api/reports/${manualReportId}`);
+        const { data: { chatId } } = await axios.post('http://localhost:5005/api/chat/thread/start', { 
+           url: report.url, 
+           userId: localStorage.getItem('userId') 
+        });
+        currentChatId = chatId;
+        if (onChatActivated) onChatActivated(chatId);
+        // Optimization: Pre-load messages for this newly found thread
+        await loadMessages(chatId);
+      } catch (err) {
+        console.error('[AI Redirect]: Thread resolution failed', err);
+      } finally {
+        setIsTyping(false);
+      }
+    }
+
+    // ── Case 1: No active chat AND no redirected report → create thread + start scan ──
+    if (!currentChatId) {
       const targetUrl = normalizeUrl(finalInput);
       if (!validateUrl(targetUrl)) {
         setMessages(prev => [...prev, {
@@ -330,15 +354,15 @@ const ChatInterface = ({
         }
         if (!targetUrl) { setIsTyping(false); return; }
 
-        await axios.post(`http://localhost:5005/api/chat/thread/${activeChatId}/message`, { type: 'user', content: finalInput });
-        await axios.post(`http://localhost:5005/api/chat/thread/${activeChatId}/message`, { type: 'system', content: 'Rescan Initiated' });
+        await axios.post(`http://localhost:5005/api/chat/thread/${currentChatId}/message`, { type: 'user', content: finalInput });
+        await axios.post(`http://localhost:5005/api/chat/thread/${currentChatId}/message`, { type: 'system', content: 'Rescan Initiated' });
         const { data: scanData } = await axios.post('http://localhost:5005/api/scan', {
-          url: targetUrl, userId, force: true, chatId: activeChatId,
+          url: targetUrl, userId, force: true, chatId: currentChatId,
           scope: scanParams.scope, mode: scanParams.mode, tests: scanParams.tests
         });
         setIsScanning(true);
-        if (scanData.reportId) onScanStarted(scanData.reportId, activeChatId);
-        await loadMessages(activeChatId);
+        if (scanData.reportId) onScanStarted(scanData.reportId, currentChatId);
+        await loadMessages(currentChatId);
       } catch (err) {
         console.error('[Rescan Error]:', err.message);
       } finally {
@@ -354,9 +378,9 @@ const ChatInterface = ({
 
     try {
       const latestReport = [...messages].reverse().find(m => m.type === 'report' || m.type === 'rescan');
-      const { data } = await axios.post(`http://localhost:5005/api/chat/thread/${activeChatId}/ask`, {
+      const { data } = await axios.post(`http://localhost:5005/api/chat/thread/${currentChatId}/ask`, {
         message: finalInput,
-        scanReportId: latestReport?.scanReportId || null
+        scanReportId: manualReportId || latestReport?.scanReportId || null
       });
       setMessages(prev => {
         const newMsgId = data.message?._id;
@@ -404,27 +428,6 @@ const ChatInterface = ({
         <p className="text-[9px] font-black uppercase tracking-[0.3em] text-primary opacity-40 mt-1">Select or Enter a Target Topology</p>
       </div>
 
-      {/* Quick Targets */}
-      <div className="w-full space-y-2">
-        <p className="text-[8px] font-black uppercase tracking-[0.25em] text-slate-600 text-left px-1">Tactical Presets</p>
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            { url: 'google.com', label: 'Google' },
-            { url: 'mygov.in', label: 'MyGov India' },
-            { url: 'takeuforward.org', label: 'TakeuForward' },
-            { url: 'unstop.com', label: 'Unstop' }
-          ].map(site => (
-            <button
-              key={site.url}
-              onClick={() => handleSend(null, site.url)}
-              className="flex items-center gap-2 p-2.5 bg-white/5 border border-white/10 rounded-xl hover:border-primary/40 hover:bg-primary/5 transition-all text-left group"
-            >
-              <Globe size={12} className="text-slate-500 group-hover:text-primary transition-colors" />
-              <span className="text-[9px] font-black uppercase tracking-tight text-white/70 group-hover:text-white">{site.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
 
       <div className="grid grid-cols-2 gap-3 w-full text-left">
         {[['Console/Net', 'Diagnostic'], ['Accessibility', 'Neural Audit'], ['UI Layout', 'Visual QA'], ['Live Monitoring', 'Sentinel Flow']].map(([t, s]) => (
@@ -491,9 +494,15 @@ const ChatInterface = ({
                 <span className="text-[8px] font-black uppercase tracking-widest text-eu-accent">{globalScanProgress.stage || 'Scanning...'}</span>
                 <span className="text-[8px] font-mono text-eu-accent">{globalScanProgress.percent || 0}%</span>
               </div>
-              <div className="h-0.5 bg-white/5 rounded-full overflow-hidden">
-                <motion.div className="h-full bg-eu-accent rounded-full"
-                  animate={{ width: `${globalScanProgress.percent || 0}%` }} transition={{ duration: 0.5 }} />
+              <div className="h-1 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                <motion.div className="h-full bg-gradient-to-r from-eu-accent to-cyan-400 rounded-full relative"
+                  animate={{ width: `${globalScanProgress.percent || 0}%` }} transition={{ duration: 0.5 }}>
+                  <motion.div 
+                    animate={{ x: ['-100%', '200%'] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent w-full h-full"
+                  />
+                </motion.div>
               </div>
             </div>
           </motion.div>

@@ -15,9 +15,10 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
     const brokenLinks = [];
     
     // Constraints
-    const maxPages = options.maxPages || 3;
-    const maxDepth = options.maxDepth !== undefined ? options.maxDepth : 0;
-    const maxLinks = 10;
+    const scope = options.scope || 'single';
+    const maxPages = scope === 'site' ? (options.maxPages || 50) : 1;
+    const maxDepth = scope === 'site' ? (options.maxDepth !== undefined ? options.maxDepth : 3) : 0;
+    const maxLinksToCheck = scope === 'site' ? 25 : 10;
     const structure = { nodes: [], links: [] };
 
     const progress = (p, s) => {
@@ -86,29 +87,42 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
                 const links = await page.evaluate(() =>
                     Array.from(document.querySelectorAll('a[href]'))
                         .map(a => ({ href: a.href, text: a.innerText.trim() }))
-                        .filter(l => l.href.startsWith('http') && !l.href.includes('#') && !l.href.includes('mailto:') && !l.href.includes('tel:') && !l.href.includes('javascript:'))
+                        .filter(l => {
+                            const h = l.href;
+                            return h.startsWith('http') && 
+                                   !h.includes('#') && 
+                                   !h.includes('mailto:') && 
+                                   !h.includes('tel:') && 
+                                   !h.includes('javascript:') &&
+                                   !/\.(zip|pdf|docx|xlsx|pptx|jpg|jpeg|png|gif|mp4|mp3|wav)$/i.test(h); // Skip binaries
+                        })
                 );
 
-                for (const linkGroup of links) {
-                    const link = linkGroup.href;
-                    allLinks.add(link);
-                    try {
-                        const linkUrl = new URL(link);
-                        const linkHostname = linkUrl.hostname;
-                        
-                        if (linkHostname === domain) {
-                             // Internal Link - Add to structure
-                             const targetId = link;
-                             const linkExists = structure.links.find(l => l.source === nodeId && l.target === targetId);
-                             if (!linkExists && nodeId !== targetId) {
-                                 structure.links.push({ source: nodeId, target: targetId });
-                             }
+                if (scope === 'site') {
+                    for (const linkGroup of links) {
+                        const link = linkGroup.href;
+                        allLinks.add(link);
+                        try {
+                            const linkUrl = new URL(link);
+                            const linkHostname = linkUrl.hostname;
+                            
+                            if (linkHostname === domain) {
+                                // Internal Link - Add to structure
+                                const targetId = link;
+                                const linkExists = structure.links.find(l => l.source === nodeId && l.target === targetId);
+                                if (!linkExists && nodeId !== targetId) {
+                                    structure.links.push({ source: nodeId, target: targetId });
+                                }
 
-                             if (!visited.has(link) && !queue.find(q => q.url === link)) {
-                                 queue.push({ url: link, depth: depth + 1 });
-                             }
-                        }
-                    } catch (_) {}
+                                if (!visited.has(link) && !queue.find(q => q.url === link)) {
+                                    queue.push({ url: link, depth: depth + 1 });
+                                }
+                            }
+                        } catch (_) {}
+                    }
+                } else {
+                    // Just gather links for breakage check even in single mode, but don't queue
+                    links.forEach(l => allLinks.add(l.href));
                 }
             } catch (e) {
                 console.warn(`[Crawler]: Failed to crawl ${url}: ${e.message}`);
@@ -120,9 +134,9 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
         browser = null;
 
         // ─── Phase 2: Broken Link Check with Promise.all ─────────────────
-        console.log(`[Crawler]: Checking ${Math.min(allLinks.size, maxLinks)} links for breakage...`);
-        progress(12, `Verifying ${Math.min(allLinks.size, maxLinks)} links...`);
-        const linksToCheck = [...allLinks].slice(0, maxLinks);
+        console.log(`[Crawler]: Checking ${Math.min(allLinks.size, maxLinksToCheck)} links for breakage...`);
+        progress(12, `Verifying ${Math.min(allLinks.size, maxLinksToCheck)} links...`);
+        const linksToCheck = [...allLinks].slice(0, maxLinksToCheck);
 
         await Promise.allSettled(
             linksToCheck.map(async (link, idx) => {
