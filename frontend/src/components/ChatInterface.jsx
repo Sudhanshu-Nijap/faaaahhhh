@@ -68,7 +68,7 @@ const PreviousScansDropdown = ({ chatId, onSelect }) => {
     if (!open || !chatId) return;
     axios.get(`http://localhost:5005/api/chat/thread/${chatId}/scans`)
       .then(r => setScans(r.data))
-      .catch(() => {});
+      .catch(() => { });
   }, [open, chatId]);
 
   if (!chatId) return null;
@@ -112,9 +112,9 @@ const PreviousScansDropdown = ({ chatId, onSelect }) => {
                           {s.type === 'rescan' ? 'Rescan' : 'Initial Scan'} #{scans.length - i}
                         </p>
                         <p className="text-[8px] text-slate-500 font-mono">
-                          {new Date(s.createdAt).toLocaleString('en-US', { 
-                            month: 'short', day: 'numeric', 
-                            hour: '2-digit', minute: '2-digit' 
+                          {new Date(s.createdAt).toLocaleString('en-US', {
+                            month: 'short', day: 'numeric',
+                            hour: '2-digit', minute: '2-digit'
                           })}
                         </p>
                       </div>
@@ -134,12 +134,12 @@ const PreviousScansDropdown = ({ chatId, onSelect }) => {
 };
 
 // ── Main Component ─────────────────────────────────────────────────────────────
-const ChatInterface = ({ 
-  activeChatId, 
-  onScanStarted, 
-  onViewFullReport, 
-  onRefresh, 
-  onResetTarget, 
+const ChatInterface = ({
+  activeChatId,
+  onScanStarted,
+  onViewFullReport,
+  onRefresh,
+  onResetTarget,
   globalScanProgress,
   pendingMessage,
   pendingReportId,
@@ -161,6 +161,7 @@ const ChatInterface = ({
   const [showSensors, setShowSensors] = useState(false);
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
+  const isSendingRef = useRef(false); // Neural lock to prevent double-submit
 
   // ── Socket Infrastructure ────────────────────────────────────────────────────
   useEffect(() => {
@@ -196,8 +197,8 @@ const ChatInterface = ({
   // Handle pending message from parent (e.g. redirected from report view)
   useEffect(() => {
     if (pendingMessage && (activeChatId || pendingReportId)) {
-       handleSend(null, pendingMessage, pendingReportId);
-       if (onMessageConsumed) onMessageConsumed();
+      handleSend(null, pendingMessage, pendingReportId);
+      if (onMessageConsumed) onMessageConsumed();
     }
   }, [pendingMessage, activeChatId, pendingReportId]);
 
@@ -219,7 +220,7 @@ const ChatInterface = ({
       setIsScanning(false);
       // New: The 'new-message' socket event will handle the UI update instantly
       // for the summary card. Only trigger sidebar refresh.
-      if (onRefresh) onRefresh(); 
+      if (onRefresh) onRefresh();
     }
     if (status === 'failed') {
       setIsScanning(false);
@@ -244,7 +245,7 @@ const ChatInterface = ({
         .then(r => {
           const chat = r.data.find(c => c._id === activeChatId);
           setChatMeta(chat || null);
-        }).catch(() => {});
+        }).catch(() => { });
       loadMessages(activeChatId).finally(() => setLoading(false));
     } else {
       setMessages([]);
@@ -274,8 +275,12 @@ const ChatInterface = ({
 
   const handleSend = async (e, manualInput = null, manualReportId = null) => {
     if (e) e.preventDefault();
+    
     const finalInput = (manualInput || input).trim();
-    if (!finalInput || isTyping || isScanning) return;
+    if (!finalInput || isTyping || isScanning || isSendingRef.current) return;
+    
+    // Activate the Neural Lock
+    isSendingRef.current = true;
     if (!manualInput) setInput('');
 
     const userId = localStorage.getItem('userId');
@@ -287,9 +292,9 @@ const ChatInterface = ({
       setIsTyping(true);
       try {
         const { data: report } = await axios.get(`http://localhost:5005/api/reports/${manualReportId}`);
-        const { data: { chatId } } = await axios.post('http://localhost:5005/api/chat/thread/start', { 
-           url: report.url, 
-           userId: localStorage.getItem('userId') 
+        const { data: { chatId } } = await axios.post('http://localhost:5005/api/chat/thread/start', {
+          url: report.url,
+          userId: localStorage.getItem('userId')
         });
         currentChatId = chatId;
         if (onChatActivated) onChatActivated(chatId);
@@ -317,15 +322,30 @@ const ChatInterface = ({
       setIsTyping(true);
       try {
         const { data: { chatId } } = await axios.post('http://localhost:5005/api/chat/thread/start', { url: targetUrl, userId });
+        
+        // --- HYBRID ACTIVATION ---
+        // Switch to the new chat thread IMMEDIATELY so the user is in context for the security audit
+        if (onChatActivated) onChatActivated(chatId);
+        currentChatId = chatId;
+
         await axios.post(`http://localhost:5005/api/chat/thread/${chatId}/message`, { type: 'user', content: targetUrl });
         await axios.post(`http://localhost:5005/api/chat/thread/${chatId}/message`, { type: 'system', content: 'Diagnostic Scan Initiated' });
+        
         const { data: scanData } = await axios.post('http://localhost:5005/api/scan', {
           url: targetUrl, userId, force: true, chatId,
           scope: scanParams.scope, mode: scanParams.mode, tests: scanParams.tests
         });
+        
         setIsScanning(true);
         if (scanData.reportId) onScanStarted(scanData.reportId, chatId);
       } catch (err) {
+        if (err.response?.status === 403) {
+           console.log('[SecurityGate]: Blocked redirection due to threat.');
+           isSendingRef.current = false; // Release early on block
+           return; // Stop redirection
+        }
+        setIsTyping(false);
+        isSendingRef.current = false;
         setMessages(prev => [...prev, {
           _id: 'err-' + Date.now(), type: 'system',
           content: 'Scan launch failed: ' + (err.response?.data?.error || err.message),
@@ -364,9 +384,15 @@ const ChatInterface = ({
         if (scanData.reportId) onScanStarted(scanData.reportId, currentChatId);
         await loadMessages(currentChatId);
       } catch (err) {
+        if (err.response?.status === 403) {
+           console.log('[SecurityGate]: Blocked rescan redirection due to threat.');
+           isSendingRef.current = false;
+           return; // Stop redirection
+        }
         console.error('[Rescan Error]:', err.message);
       } finally {
         setIsTyping(false);
+        isSendingRef.current = false;
       }
       return;
     }
@@ -378,22 +404,13 @@ const ChatInterface = ({
 
     try {
       const latestReport = [...messages].reverse().find(m => m.type === 'report' || m.type === 'rescan');
-      const { data } = await axios.post(`http://localhost:5005/api/chat/thread/${currentChatId}/ask`, {
+      await axios.post(`http://localhost:5005/api/chat/thread/${currentChatId}/ask`, {
         message: finalInput,
         scanReportId: manualReportId || latestReport?.scanReportId || null
       });
-      setMessages(prev => {
-        const newMsgId = data.message?._id;
-        if (newMsgId && prev.some(m => m._id === newMsgId)) {
-          return prev;
-        }
-        return [...prev, {
-          _id: newMsgId || 'tmp-ai-' + Date.now(),
-          type: 'ai',
-          content: data.reply,
-          createdAt: data.message?.createdAt || new Date()
-        }];
-      });
+      // Logic: Duplicate prevention. 
+      // We DO NOT setMessages here because the backend emits the 'aiMsg' via Socket.io.
+      // The socket listener in useEffect handles adding it to the state once.
     } catch (err) {
       const errMsg = err.response?.data?.error || err.message || 'Neural uplink failure.';
       console.error('[Ask AI Error]:', errMsg);
@@ -404,6 +421,7 @@ const ChatInterface = ({
       }]);
     } finally {
       setIsTyping(false);
+      isSendingRef.current = false; // Release the Neural Lock
     }
   };
 
@@ -497,7 +515,7 @@ const ChatInterface = ({
               <div className="h-1 bg-white/5 rounded-full overflow-hidden border border-white/5">
                 <motion.div className="h-full bg-gradient-to-r from-eu-accent to-cyan-400 rounded-full relative"
                   animate={{ width: `${globalScanProgress.percent || 0}%` }} transition={{ duration: 0.5 }}>
-                  <motion.div 
+                  <motion.div
                     animate={{ x: ['-100%', '200%'] }}
                     transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
                     className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent w-full h-full"
@@ -566,17 +584,19 @@ const ChatInterface = ({
                   className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
                   <div className={`flex flex-col gap-1 max-w-[85%] ${isUser ? 'items-end' : 'items-start'}`}>
                     <div className="flex items-center gap-1.5 px-1">
-                      {!isUser && <Bot size={10} className="text-[var(--eu-text-main)] opacity-40" />}
-                      <span className="text-[8px] font-black uppercase tracking-[0.2em] text-[var(--eu-text-main)] opacity-30">
+                      {!isUser && (msg.content.includes('🚨') ? <Shield size={10} className="text-primary animate-pulse" /> : <Bot size={10} className="text-[var(--eu-text-main)] opacity-40" />)}
+                      <span className={`text-[8px] font-black uppercase tracking-[0.2em] ${!isUser && msg.content.includes('🚨') ? 'text-primary' : 'text-[var(--eu-text-main)] opacity-30'}`}>
                         {isUser ? 'You' : 'Sentinel AI'}
                       </span>
                       <span className="text-[8px] text-slate-600 font-mono">{time}</span>
                       {isUser && <User size={10} className="text-[var(--eu-text-main)] opacity-40" />}
                     </div>
-                    <div className={`px-4 py-3 rounded-[18px] border border-[var(--eu-glass-border)] text-[11px] leading-relaxed
+                    <div className={`px-4 py-3 rounded-[18px] border text-[11px] leading-relaxed transition-all duration-500
                       ${isUser
                         ? 'bg-[var(--eu-bg-card)] rounded-tr-sm border-primary/20 text-[var(--eu-text-main)] opacity-90'
-                        : 'bg-[var(--eu-bg-card)] rounded-tl-sm text-[var(--eu-text-main)] opacity-90'
+                        : msg.content.includes('🚨')
+                          ? 'bg-primary/5 border-primary/40 rounded-tl-sm text-[var(--eu-text-main)] shadow-[0_0_20px_rgba(239,68,68,0.1)]'
+                          : 'bg-[var(--eu-bg-card)] border-[var(--eu-glass-border)] rounded-tl-sm text-[var(--eu-text-main)] opacity-90'
                       }`}>
                       {msg.type === 'ai' ? (
                         <div className="prose prose-invert prose-p:my-1 prose-pre:my-2 prose-pre:bg-black/40 prose-pre:p-2 prose-pre:rounded-lg max-w-none text-[11px]">

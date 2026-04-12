@@ -49,16 +49,19 @@ async function processFile(fileInfo) {
     console.log(`[NeuralV3]: Scanning ${fileName} (Layer 3: Heavy Logic Overhaul)...`);
     const heavyResult = await wholeFallbackModel.generateWholeFallback(fileName, originalContent);
     if (heavyResult.success && heavyResult.patch) {
+        console.log(`[NeuralV3]: Layer 3 Success for ${fileName}`);
         return {
             file: fileName,
             source: 'wholefallback',
             confidence: '98%',
             patches: [{ type: 'unified', content: heavyResult.patch, reason: 'Neural Whole-File Logic Correction' }],
             updatedCode: heavyResult.fixedCode,
+            analysis: heavyResult.analysis,
             fixed: true
         };
     }
 
+    console.log(`[NeuralV3]: All layers failed for ${fileName}`);
     return {
         file: fileName,
         source: 'fallback',
@@ -68,6 +71,7 @@ async function processFile(fileInfo) {
         fixed: false,
         message: 'Neural substrate could not safely resolve this artifact.'
     };
+
 }
 
 /**

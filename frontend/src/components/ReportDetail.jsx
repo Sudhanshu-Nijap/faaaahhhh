@@ -85,6 +85,7 @@ const getTabData = (report, tab) => {
     case 'layout': return [...(report.uiIssues || []), ...(report.responsiveIssues || [])];
     case 'accessibility': return report.accessibilityIssues;
     case 'forms': return report.formIssues;
+    case 'security': return report.securityIssues;
     default: return [];
   }
 };
@@ -97,6 +98,7 @@ const getTableColumns = (tab) => {
     case 'layout': return ['Page', 'Device', 'Issue', 'Selector'];
     case 'accessibility': return ['Page', 'Issue', 'Severity', 'Element'];
     case 'forms': return ['Form', 'Type', 'Field', 'Severity', 'Message'];
+    case 'security': return ['Page', 'Issue', 'Severity', 'Link'];
     default: return [];
   }
 };
@@ -309,6 +311,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
     { id: 'console', label: 'Console', icon: <Terminal size={14} />, count: report?.consoleErrors?.length || 0 },
     { id: 'layout', label: 'UI/UX', icon: <Layout size={14} />, count: (report?.uiIssues?.length || 0) + (report?.responsiveIssues?.length || 0) },
     { id: 'accessibility', label: 'Accessibility', icon: <UserCheck size={14} />, count: report?.accessibilityIssues?.length || 0 },
+    { id: 'security', label: 'Security', icon: <Shield size={14} className={report?.securityIssues?.length > 0 ? 'text-primary animate-pulse' : ''} />, count: report?.securityIssues?.length || 0 },
     { id: 'screenshots', label: 'Screens', icon: <Image size={14} />, count: report?.screenshots?.length || 0 },
     { id: 'forms', label: 'Forms', icon: <FormInput size={14} />, count: report?.formIssues?.length || 0 },
   ];
@@ -384,6 +387,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
       layout: 5,
       accessibility: 15,
       forms: 10,
+      security: 10,
     };
     const deductions = tabs.reduce((acc, curr) => {
       const weight = weights[curr.id] || 0;
@@ -409,6 +413,11 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
               <span className={`px-5 py-2 rounded-2xl text-[10px] sm:text-[12px] font-black uppercase tracking-[0.3em] border bg-primary/10 border-primary/30 text-primary shadow-neon`}>
                 {report.status}
               </span>
+              {(report.securityIssues?.length > 0) && (
+                <span className="px-5 py-2 rounded-2xl text-[10px] sm:text-[12px] font-black uppercase tracking-[0.3em] border bg-red-500/10 border-red-500/30 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse">
+                  SECURITY_CRITICAL
+                </span>
+              )}
             </div>
             <div className="mt-4 flex flex-row items-center gap-4 opacity-50">
               <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">

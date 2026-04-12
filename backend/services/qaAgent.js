@@ -45,11 +45,14 @@ class QAAgent {
             - LIGHTHOUSE SCORES: ${JSON.stringify(currentReport.lighthouseScores || {})}
             - ACCESSIBILITY ISSUES: ${JSON.stringify(currentReport.accessibilityIssues || [])}
             - FORM DIAGNOSTICS: ${JSON.stringify(currentReport.formIssues || [])}
+            - SECURITY THREATS: ${JSON.stringify(currentReport.securityIssues || [])}
             
             TASK: 
-            Provide a technical classification (e.g., PERFORMANCE_CRITICAL, ACCESSIBILITY_FAILED, HYGIENE_STABLE).
+            Provide a technical classification (e.g., SECURITY_CRITICAL, PERFORMANCE_CRITICAL, ACCESSIBILITY_FAILED).
             
-            IMPORTANT: Generate a concise high-level summary. 
+            IMPORTANT: If any SECURITY THREATS are present, you MUST prioritize them as the #1 issue and classify the report as SECURITY_CRITICAL.
+            
+            Generate a concise high-level summary. 
             If baseline data was provided above, you MUST explicitly mention the comparison in the summary (e.g., "Health improved by X points" or "Regressed since last scan due to Y new errors").
             
             List the top 3 most urgent issues.
@@ -121,6 +124,16 @@ class QAAgent {
                     reason: "Missing ARIA attributes or semantic HTML violations.",
                     fix: ["Review specific failures in Accessibility tab", "Apply recommended ARIA patches"],
                     severity: "Medium",
+                    source: "local"
+                });
+            }
+            if ((currentReport.securityIssues || []).length > 0) {
+                localIssues.push({
+                    title: "Critical Security Threat Detected",
+                    issue: `The diagnostic layer identified ${currentReport.securityIssues.length} active malicious patterns or phishing indicators.`,
+                    reason: "Heuristic pattern matching matched known malicious infrastructure or data exfiltration code.",
+                    fix: ["Switch to the Security Tab for detailed findings", "Decommission the target endpoint immediately"],
+                    severity: "Critical",
                     source: "local"
                 });
             }

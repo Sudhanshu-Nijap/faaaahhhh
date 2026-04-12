@@ -15,6 +15,8 @@ const qaScanner = require('../services/qaScanner');
 const qaAgent = require('../services/qaAgent');
 const scanEngine = require('../services/scanEngine');
 const comparisonService = require('../services/comparisonService');
+const linkGuardian = require('../services/linkGuardian');
+const axios = require('axios');
 
 // 3. Connect to MongoDB (Worker has its own connection)
 mongoose.connect(process.env.MONGODB_URI)
@@ -53,13 +55,14 @@ const safeMessageUplink = async (chatId, type, content, scanReportId, reportSumm
 const calculateReportHealth = (report) => {
     if (!report) return 0;
     
-    const weights = { network: 0.1, links: 10, console: 5, ui: 10, accessibility: 10 };
+    const weights = { network: 0.1, links: 10, console: 5, ui: 10, accessibility: 10, security: 50 };
     const counts = {
         network: report.networkLogs?.length || 0,
         links: report.brokenLinks?.length || 0,
         console: report.consoleErrors?.length || 0,
         ui: (report.uiIssues?.length || 0) + (report.responsiveIssues?.length || 0),
-        accessibility: report.accessibilityIssues?.length || 0
+        accessibility: report.accessibilityIssues?.length || 0,
+        security: report.securityIssues?.length || 0
     };
     
     const rawDeduction = Object.keys(weights).reduce((acc, key) => acc + (counts[key] * weights[key] || 0), 0);
@@ -87,8 +90,52 @@ async function runMasterOrchestrator(data) {
             if (parentPort) parentPort.postMessage({ type: 'progress', percent, stage });
         };
 
-        // --- STAGE 1: Infrastructure Discovery (Vite/Playwright) ---
-        emitProgress(5, 'Engaging Integrated Audit Core...');
+    // --- NEW: Global Neural Pre-flight Audit ---
+    emitProgress(2, 'Neural pre-flight audit...');
+    const securityCheck = linkGuardian.analyze(baseUrl);
+    
+    if (securityCheck.isMalicious) {
+        console.log(`[MasterWorker]: Critical Threat detected: ${securityCheck.threatType}`);
+        await ScanReport.findByIdAndUpdate(reportId, {
+            $push: {
+                securityIssues: {
+                    page: baseUrl,
+                    issue: `Critical Threat: ${securityCheck.threatType}`,
+                    severity: 'Critical',
+                    link: baseUrl,
+                    reason: securityCheck.reason,
+                    suggestedFix: "Phishing pattern detected. Audit aborted for system safety."
+                }
+            }
+        });
+    }
+
+    try {
+        await axios.get(baseUrl, { timeout: 4000, validateStatus: () => true });
+    } catch (e) {
+         console.warn(`[MasterWorker]: Target host ${baseUrl} unreachable.`);
+         emitProgress(100, 'Host unreachable. Finalizing telemetry...');
+         
+         await ScanReport.findByIdAndUpdate(reportId, { 
+             status: securityCheck.isMalicious ? 'completed' : 'failed', 
+             error: 'Target host is offline or unreachable. Security audit completed.' 
+         });
+
+         if (chatId) {
+             const reportSummary = {
+                status: securityCheck.isMalicious ? 'completed' : 'failed',
+                healthScore: securityCheck.isMalicious ? 50 : 0,
+                stats: { securityIssues: securityCheck.isMalicious ? 1 : 0 }
+             };
+             await safeMessageUplink(chatId, 'report', `Security Alert: ${baseUrl}`, reportId, reportSummary);
+         }
+
+         parentPort.postMessage({ type: securityCheck.isMalicious ? 'completed' : 'failed', error: 'Host unreachable' });
+         return;
+    }
+
+    // --- STAGE 1: Infrastructure Discovery (Vite/Playwright) ---
+    emitProgress(5, 'Engaging Integrated Audit Core...');
         
         await Promise.all([
             (async () => {
@@ -159,11 +206,9 @@ async function runMasterOrchestrator(data) {
         emitProgress(92, 'Syncing Final AI Analysis...');
         const { prevReportId } = data;
 
-        // Parallel Fetch for current and baseline reports
-        const [currentReport, previousReport] = await Promise.all([
-            ScanReport.findById(reportId),
-            prevReportId ? ScanReport.findById(prevReportId) : Promise.resolve(null)
-        ]);
+        // CRITICAL SYNC: Re-fetch currentReport to capture all async security telemetry
+        const currentReport = await ScanReport.findById(reportId);
+        const previousReport = prevReportId ? await ScanReport.findById(prevReportId) : null;
 
         if (!currentReport) throw new Error('Neural focus lost: Report not found during synthesis.');
 
@@ -208,7 +253,8 @@ async function runMasterOrchestrator(data) {
                     brokenLinks: finalReport?.brokenLinks?.length || 0,
                     consoleErrors: finalReport?.consoleErrors?.length || 0,
                     accessibilityIssues: finalReport?.accessibilityIssues?.length || 0,
-                    networkIssues: finalReport?.networkLogs?.length || 0
+                    networkIssues: finalReport?.networkLogs?.length || 0,
+                    securityIssues: finalReport?.securityIssues?.length || 0
                 },
                 comparison: comparison?.previousReportId ? {
                     previousReportId: comparison.previousReportId,

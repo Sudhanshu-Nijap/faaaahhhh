@@ -2,6 +2,8 @@ const { chromium } = require('playwright');
 const ScanReport = require('../models/ScanReport');
 const axios = require('axios');
 const path = require('path');
+const linkGuardian = require('./linkGuardian');
+const scriptGuardian = require('./scriptGuardian');
 
 /**
  * crawlWebsite - Universal Crawler with Discovery Constraints
@@ -13,6 +15,7 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
     const internalPages = new Set();
     const allLinks = new Set();
     const brokenLinks = [];
+    const securityIssues = [];
     
     // Constraints
     const scope = options.scope || 'single';
@@ -34,7 +37,25 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
         return [baseUrl];
     }
 
-    progress(7, `Initializing crawl for ${domain}...`);
+    progress(7, `Initializing diagnostics for ${domain}...`);
+
+    // ─── Phase 0: Pre-flight Reachability ─────────────────
+    // (Security Pattern for baseUrl is handled by Master Worker for deduplication)
+
+    try {
+        progress(8, `Probing host reachability...`);
+        await axios.get(baseUrl, { 
+            timeout: 5000, 
+            headers: { 'User-Agent': 'Sentinel-Safe-Probe/1.0' },
+            validateStatus: () => true 
+        });
+    } catch (e) {
+        console.warn(`[Crawler]: Host ${domain} appears offline. Skipping browser scan.`);
+        progress(10, "Target host is unreachable. Finalizing telemetry...");
+        
+        // Return only baseUrl since we're offline
+        return [baseUrl];
+    }
 
     let browser;
     try {
@@ -96,6 +117,13 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
                                    !h.includes('javascript:') &&
                                    !/\.(zip|pdf|docx|xlsx|pptx|jpg|jpeg|png|gif|mp4|mp3|wav)$/i.test(h); // Skip binaries
                         })
+                );
+                
+                // --- NEW: Script Source Extraction ---
+                const scriptUrls = await page.evaluate(() => 
+                    Array.from(document.querySelectorAll('script[src]'))
+                        .map(s => s.src)
+                        .filter(src => src.startsWith('http'))
                 );
 
                 if (scope === 'site') {
@@ -167,6 +195,19 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
 
                     const isBroken = status === 0 || status === 404 || status === 410 || status >= 500;
 
+                    // --- NEW: LinkGuardian AI Analysis ---
+                    const securityCheck = linkGuardian.analyze(link);
+                    if (securityCheck.isMalicious) {
+                        securityIssues.push({
+                            page: baseUrl,
+                            issue: `Malicious Link Detected: ${securityCheck.threatType}`,
+                            link: link,
+                            severity: 'Critical',
+                            reason: securityCheck.reason,
+                            suggestedFix: `Remove or replace this link immediately. It matches high-risk phishing or malware distribution patterns (${securityCheck.riskScore}% risk confidence).`
+                        });
+                    }
+
                     if (isBroken) {
                         brokenLinks.push({
                             page: baseUrl,
@@ -184,11 +225,42 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
             })
         );
 
+        // --- NEW: Phase 3: Malicious Script Analysis ---
+        if (options.scanScripts !== false) {
+            console.log(`[Crawler]: Analyzing ${scriptUrls?.length || 0} scripts for malicious code...`);
+            for (const sUrl of (scriptUrls || []).slice(0, 15)) { // Limit to 15 scripts for speed
+                try {
+                    const res = await axios.get(sUrl, { timeout: 5000, headers: { 'User-Agent': 'Sentinel-QA-Bot/1.0' } });
+                    const analysis = scriptGuardian.analyze(res.data, sUrl);
+                    if (analysis.isMalicious) {
+                        securityIssues.push({
+                            page: baseUrl,
+                            issue: `Malicious Script: ${analysis.findings[0]?.type || 'Security Threat'}`,
+                            severity: analysis.riskScore > 80 ? 'Critical' : 'High',
+                            link: sUrl,
+                            reason: analysis.findings.map(f => f.evidence).join(' '),
+                            suggestedFix: `Review and remove this script immediately. ${analysis.findings[0]?.impact}`
+                        });
+                    }
+                } catch (_) {
+                    // Script fetch failed, skip
+                }
+            }
+        }
+
         // ─── Persist results ──────────────────────────────────────────────
         const update = { $set: { pagesCrawled: internalPages.size, siteStructure: structure } };
+        
         if (brokenLinks.length > 0) {
-            update.$push = { brokenLinks: { $each: brokenLinks } };
+            update.$push = update.$push || {};
+            update.$push.brokenLinks = { $each: brokenLinks };
             console.log(`[Crawler]: ${brokenLinks.length} broken links found.`);
+        }
+
+        if (securityIssues.length > 0) {
+            update.$push = update.$push || {};
+            update.$push.securityIssues = { $each: securityIssues };
+            console.log(`[Crawler]: ${securityIssues.length} malicious links detected.`);
         }
 
         await ScanReport.findByIdAndUpdate(reportId, update);

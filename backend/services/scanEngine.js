@@ -2,9 +2,10 @@ const { chromium } = require('playwright');
 const ScanReport = require('../models/ScanReport');
 const crawler = require('./crawler');
 const path = require('path');
+const linkGuardian = require('./linkGuardian');
+const axios = require('axios');
 
 // Import Specialist Agents
-const axios = require('axios');
 const fs = require('fs');
 
 const screenshotsDir = path.join(__dirname, '../screenshots');
@@ -95,7 +96,38 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
     let browser;
     try {
         console.log(`[scanEngine]: Initiating Converged Lean Scan: ${url} | Modules: ${scannedModules.join(', ')}`);
-    emitProgress(5, 'Establishing neural uplink...');
+    emitProgress(5, 'Pre-flight security audit...');
+
+    // --- NEW: Global Pre-flight Logic ---
+    const initialSecurity = linkGuardian.analyze(url);
+    if (initialSecurity.isMalicious) {
+        await ScanReport.findByIdAndUpdate(reportId, {
+            $push: {
+                securityIssues: {
+                    page: url,
+                    issue: `Critical Threat: ${initialSecurity.threatType}`,
+                    severity: 'Critical',
+                    link: url,
+                    reason: initialSecurity.reason,
+                    suggestedFix: "This domain matches high-fidelity phishing patterns. Neural audit aborted for safety."
+                }
+            }
+        });
+    }
+
+    try {
+        await axios.get(url, { timeout: 5000, validateStatus: () => true });
+    } catch (e) {
+        console.warn(`[scanEngine]: Host unreachable: ${url}`);
+        emitProgress(10, 'Host unreachable. Finalizing reports...');
+        await ScanReport.findByIdAndUpdate(reportId, { 
+            status: 'failed', 
+            error: 'Target host is unreachable. Scan terminated.' 
+        });
+        return;
+    }
+
+    emitProgress(15, 'Establishing neural uplink...');
     
     // 1. Launch Browser with Remote Debugging for Lighthouse
     const port = 9222 + Math.floor(Math.random() * 100);

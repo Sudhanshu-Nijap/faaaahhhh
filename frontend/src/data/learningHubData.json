@@ -88,5 +88,41 @@
     "example": "$ git bisect start\n$ git bisect bad HEAD\n$ git bisect good v1.2.0\n# Git checks out a midpoint for you to test.",
     "solution": "1. Find a known good state.\n2. Narrow down the offending commit.\n3. Review the diff to understand what broke.",
     "tip": "Keep commits small and focused so identifying the root cause is easier."
+  },
+  {
+    "id": 11,
+    "category": "HTTP Guide",
+    "title": "1xx & 2xx: Informational & Success",
+    "description": "The 'Communication' and 'Happy Path' codes. 1xx means 'Wait, I'm thinking', while 2xx means 'I've done exactly what you asked'.",
+    "example": "// 200 OK: Standard success\n// 201 Created: New resource deployed\n// 204 No Content: Succesful but empty response",
+    "solution": "Ensure your UI provides positive feedback (success toasts) when receiving 2xx status codes.",
+    "tip": "Use 204 for DELETE or UPDATE operations where returning data is unnecessary."
+  },
+  {
+    "id": 12,
+    "category": "HTTP Guide",
+    "title": "3xx: The Redirection Protocol",
+    "description": "The user is being asked to take additional action to fulfill the request. Often used for URL restructuring or cached content.",
+    "example": "// 301 Moved Permanently\n// 302 Found (Temporary)\n// 304 Not Modified (Cache usage)",
+    "solution": "Double-check redirect loops and ensure 304 is handled by your browser cache to save bandwidth.",
+    "tip": "Always use 301 for SEO when migrating pages to new URLs."
+  },
+  {
+    "id": 13,
+    "category": "HTTP Guide",
+    "title": "4xx: Client Interaction Errors",
+    "description": "These errors mean 'The request contains bad syntax or cannot be fulfilled.' This is almost always a problem on the frontend or a bad URL.",
+    "example": "// 400 Bad Request: Syntax error\n// 401 Unauthorized: No valid credentials\n// 403 Forbidden: Missing permissions\n// 404 Not Found: Missing resource\n// 429 Too Many Requests: Rate limited",
+    "solution": "Log the request payload and headers. Ensure the user is authenticated and the URL is spelled correctly.",
+    "tip": "403 means the server knows who you are but still says 'No'. 401 means the server doesn't know you."
+  },
+  {
+    "id": 14,
+    "category": "HTTP Guide",
+    "title": "5xx: Server Infrastructure Failures",
+    "description": "The server failed to fulfill an apparently valid request. This is a backend or infrastructure level problem.",
+    "example": "// 500 Internal Server Error: General crash\n// 502 Bad Gateway: Upstream failure\n// 503 Service Unavailable: Overloaded\n// 504 Gateway Timeout: Response took too long",
+    "solution": "Check backend logs, cloud environment health, and database connection strings.",
+    "tip": "A 504 error usually means a backend function timed out or a heavy database query failed."
   }
 ]

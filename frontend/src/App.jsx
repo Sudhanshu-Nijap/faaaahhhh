@@ -231,6 +231,11 @@ function App() {
         setAlert({ type: 'info', message: 'Re-scan initiated. Monitoring neural downlink...' });
       }
     } catch (error) {
+      if (error.response?.status === 403) {
+        console.warn('[SecurityGate]: Re-scan blocked by neural security audit.');
+        setAlert({ type: 'error', message: 'CRITICAL: Targeted domain matches phishing patterns. Scan aborted.' });
+        return;
+      }
       console.error('Re-scan failed', error);
       setAlert({ type: 'error', message: 'Target acquisition failed. Check backend uplink.' });
     }
@@ -615,7 +620,6 @@ function App() {
                         pendingMessage={pendingChat?.message}
                         pendingReportId={pendingChat?.reportId}
                         onMessageConsumed={() => setPendingChat(null)}
-                        onChatActivated={setActiveChatId}
                         reports={reports}
                         setAlert={setAlert}
                         confirm={confirm}

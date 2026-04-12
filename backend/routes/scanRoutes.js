@@ -12,6 +12,9 @@ const reportExporter = require('../services/reportExporter');
 const scanEngine = require('../services/scanEngine');
 const discordService = require('../services/discordService');
 const axios = require('axios');
+const linkGuardian = require('../services/linkGuardian');
+const Message = require('../models/Message');
+const Chat = require('../models/Chat');
 
 // Global registry of tactical workers for lifecycle control
 const activeWorkers = new Map();
@@ -31,7 +34,15 @@ router.post('/scan', async (req, res) => {
 
     try {
         // Run scan fully async — returns reportId immediately to the client
-        const { reportId, isCached } = await startScan(url, userId, force, 'standard', singlePageOnly, tests, scope, mode, chatId);
+        const { reportId, isCached, threat } = await startScan(url, userId, force, 'standard', singlePageOnly, tests, scope, mode, chatId);
+
+        if (threat) {
+            return res.status(403).json({ 
+                error: 'Security Breach Protocol: Targeted domain is flagged as malicious.',
+                threat: threat.threatType,
+                riskScore: threat.riskScore
+            });
+        }
 
         if (isCached) {
             return res.status(200).json({
@@ -268,6 +279,34 @@ const calculateReportHealth = (report) => {
  * Separated from runFullScan for cleaner async handling.
  */
 async function startScan(baseUrl, userId, force = false, chaosIntensity = 'standard', singlePageOnly = false, tests = [], scope = 'single', mode = 'specific', chatId = null) {
+    // ── Pre-Scan Security Gate (PRIORITY #1) ──
+    const securityCheck = linkGuardian.analyze(baseUrl);
+    if (securityCheck.isMalicious) {
+        console.log(`[SecurityGate]: Blocking malicious scan for ${baseUrl}`);
+        
+        if (chatId) {
+            try {
+                const threatMsg = `### 🚨 SECURITY HAZARD DETECTED\n\n**Sentinel AI** has intercepted this request because the target domain matches critical phishing or malware distribution patterns.\n\n- **Threat Type**: ${securityCheck.threatType}\n- **Risk Score**: ${securityCheck.riskScore}%\n- **Logic**: ${securityCheck.reason}\n\n**Recommendation**: Protocol aborted for your system safety. Do not interact with this domain.`;
+                
+                const msg = await Message.create({
+                    chatId: chatId,
+                    type: 'ai',
+                    content: threatMsg
+                });
+                
+                await Chat.findByIdAndUpdate(chatId, { lastMessageAt: new Date() });
+
+                if (global.io) {
+                    global.io.to(chatId.toString()).emit('new-message', msg);
+                }
+            } catch (err) {
+                console.error('[SecurityGate]: Failed to post warning:', err.message);
+            }
+        }
+
+        return { threat: securityCheck };
+    }
+
     // ── CACHE CHECK (GLOBAL REDUNDANCY MITIGATION) ───────────────────
     if (!force) {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
