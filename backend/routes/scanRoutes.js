@@ -12,6 +12,7 @@ const reportExporter = require('../services/reportExporter');
 const scanEngine = require('../services/scanEngine');
 const discordService = require('../services/discordService');
 const axios = require('axios');
+const { analyzeURLSecurity } = require('../services/urlSecurityAnalyzer');
 
 // Global registry of tactical workers for lifecycle control
 const activeWorkers = new Map();
@@ -28,6 +29,30 @@ router.post('/scan', async (req, res) => {
 
     try { new URL(url); }
     catch (e) { return res.status(400).json({ error: 'Invalid URL format.' }); }
+
+    // INTEGRATION POINT: FAST URL Security Analyzer
+    const verdict = await analyzeURLSecurity(url);
+    if (verdict.blocked) {
+        const shortExplanation = `Security Block [${(verdict.riskLevel || 'High').toUpperCase()}] - ${verdict.reason}. ${verdict.explanation || verdict.source || ''}`;
+        return res.status(400).json({ error: shortExplanation });
+    }
+
+    // Provide the short explanation to the chat UI for successful verification
+    if (chatId) {
+        try {
+            const Message = require('../models/Message');
+            const msg = await Message.create({
+                chatId: chatId,
+                type: 'system',
+                content: `Security Check Passed: ${verdict.riskLevel.toUpperCase()} Risk. Scanning permitted.`
+            });
+            if (global.io) {
+                global.io.to(chatId.toString()).emit('new-message', msg);
+            }
+        } catch (e) {
+            console.error('Failed to post security verification system message:', e.message);
+        }
+    }
 
     try {
         // Run scan fully async — returns reportId immediately to the client
@@ -52,9 +77,9 @@ router.post('/scan', async (req, res) => {
 router.get('/scan/active/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
-        const activeScan = await ScanReport.findOne({ 
-            userId, 
-            status: 'in-progress' 
+        const activeScan = await ScanReport.findOne({
+            userId,
+            status: 'in-progress'
         }).sort({ createdAt: -1 });
 
         if (!activeScan) return res.status(200).json({ message: 'No active scan in progress', status: 'idle' });
@@ -236,7 +261,7 @@ router.get('/stats/trends', async (req, res) => {
             .select('healthScore performanceMetrics lighthouseScores createdAt')
             .sort({ createdAt: 1 })
             .limit(10);
-            
+
         res.json(history);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -271,7 +296,7 @@ async function startScan(baseUrl, userId, force = false, chaosIntensity = 'stand
     // ── CACHE CHECK (GLOBAL REDUNDANCY MITIGATION) ───────────────────
     if (!force) {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        
+
         // Try to find a recent report for this URL (global)
         const existingReport = await ScanReport.findOne({
             url: baseUrl,
@@ -287,7 +312,7 @@ async function startScan(baseUrl, userId, force = false, chaosIntensity = 'stand
 
     const defaultModules = ['console', 'network', 'lighthouse', 'accessibility', 'links', 'ui', 'forms'];
     let finalModules = defaultModules;
-    
+
     if (Array.isArray(tests)) {
         finalModules = tests;
     } else if (typeof tests === 'string' && tests.length > 0) {
@@ -305,14 +330,14 @@ async function startScan(baseUrl, userId, force = false, chaosIntensity = 'stand
         userId,
         status: 'completed',
     }).sort({ createdAt: -1 });
-    
+
     // Check if the trigger request provided a callbackUrl (handled via startScan call site or context)
     // For now we rely on the report creation to handle it via direct Job triggering
 
 
-    const report = new ScanReport({ 
-        url: baseUrl, 
-        userId, 
+    const report = new ScanReport({
+        url: baseUrl,
+        userId,
         status: 'in-progress',
         scannedModules: finalModules,
         mode: mode || 'full',
@@ -322,9 +347,9 @@ async function startScan(baseUrl, userId, force = false, chaosIntensity = 'stand
 
     // Global User Room Update: Notify dashboard that a new report (in-progress) exists
     if (global.io) {
-        global.io.to(`user_${userId.toString()}`).emit('report-update', { 
-            type: 'scan_started', 
-            reportId: report._id.toString() 
+        global.io.to(`user_${userId.toString()}`).emit('report-update', {
+            type: 'scan_started',
+            reportId: report._id.toString()
         });
     }
 
@@ -362,11 +387,11 @@ async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = f
     worker.on('message', (msg) => {
         if (msg.type === 'progress') {
             if (global.io) {
-                global.io.to(reportId.toString()).emit('scan-progress', { 
+                global.io.to(reportId.toString()).emit('scan-progress', {
                     reportId: reportId.toString(),
-                    percent: msg.percent, 
-                    stage: msg.stage, 
-                    status: 'in-progress' 
+                    percent: msg.percent,
+                    stage: msg.stage,
+                    status: 'in-progress'
                 });
             }
         }
@@ -377,10 +402,10 @@ async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = f
         }
         if (msg.type === 'failed') {
             if (global.io) {
-                global.io.to(reportId.toString()).emit('scan-progress', { 
-                    percent: 100, 
-                    stage: 'Scan failed: ' + msg.error, 
-                    status: 'failed' 
+                global.io.to(reportId.toString()).emit('scan-progress', {
+                    percent: 100,
+                    stage: 'Scan failed: ' + msg.error,
+                    status: 'failed'
                 });
             }
         }
@@ -392,7 +417,7 @@ async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = f
 
     worker.on('exit', (code) => {
         activeWorkers.delete(reportId.toString());
-        
+
         // ── SYNC JOB LIFECYCLE ───────────────────────────────────────
         ScanReport.findById(reportId).then(async report => {
             if (report && report.jobId) {
@@ -412,8 +437,8 @@ async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = f
 
                     // ── SOCKET EMISSION ──────────────────────────────────────
                     if (global.io) {
-                        global.io.emit('job-sync', { 
-                            jobId: job._id.toString(), 
+                        global.io.emit('job-sync', {
+                            jobId: job._id.toString(),
                             status: job.status,
                             isActive: job.isActive,
                             lastRun: job.lastRun
@@ -451,9 +476,9 @@ async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = f
                 // Global User Room Update: Ensure all views (Dashboard, Sidebar) refresh
                 ScanReport.findById(reportId).then(report => {
                     if (report?.userId) {
-                        global.io.to(`user_${report.userId.toString()}`).emit('report-update', { 
-                            type: 'scan_completed', 
-                            reportId: reportId.toString() 
+                        global.io.to(`user_${report.userId.toString()}`).emit('report-update', {
+                            type: 'scan_completed',
+                            reportId: reportId.toString()
                         });
                     }
                 });
@@ -468,7 +493,7 @@ router.post('/learning/ask', async (req, res) => {
         if (!question || question.trim().length < 2) {
             return res.status(400).json({ error: 'Uplink request is too sparse.' });
         }
-        
+
         const learningAgent = require('../services/learningAgent');
         const response = await learningAgent.askDebugging(question);
         res.json(response);
@@ -531,7 +556,7 @@ router.post('/debug/deploy-all', async (req, res) => {
 router.post('/debug/upload', async (req, res) => {
     const { fileName, content } = req.body;
     try {
-        const result = await scanExecutor.processFile({ name: fileName, path: 'memory://'+fileName, isMemory: true, content });
+        const result = await scanExecutor.processFile({ name: fileName, path: 'memory://' + fileName, isMemory: true, content });
         res.json({ status: 'success', files: [result] });
     } catch (err) {
         res.status(500).json({ error: 'Neural Upload Fault: ' + err.message });
