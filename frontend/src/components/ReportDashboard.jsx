@@ -155,9 +155,14 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme, onDel
     return () => clearInterval(interval);
   }, [reports]);
 
-  const filteredReports = reports.filter(r => 
-    !r.isArchived && new URL(r.url).hostname.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredReports = reports.filter(r => {
+    try {
+      const hostname = new URL(r.url).hostname.toLowerCase();
+      return !r.isArchived && hostname.includes(searchQuery.toLowerCase());
+    } catch (e) {
+      return !r.isArchived && r.url.toLowerCase().includes(searchQuery.toLowerCase());
+    }
+  });
 
   const sortedReports = [...filteredReports].sort((a, b) => {
     if (a.isPinned && !b.isPinned) return -1;
@@ -477,7 +482,15 @@ const ReportDashboard = ({ onSelectReport, isBentoView, refreshKey, theme, onDel
                 <div style={headerStyle}><span style={headerTextStyle}>Options</span></div>
                 <MenuButton isDark={isDark} icon={<UserPlus size={14} />} label="Start a group chat" onClick={() => { handleShare(activeMenuId); setActiveMenuId(null); }} />
                 <MenuButton isDark={isDark} icon={<Calendar size={14} />} label="Schedule Protocol" onClick={() => { const report = reports.find(r => r._id === activeMenuId); onScheduleReport(report.url); setActiveMenuId(null); }} />
-                <MenuButton isDark={isDark} icon={<Edit2 size={14} />} label="Rename" onClick={() => { const report = reports.find(r => r._id === activeMenuId); handleRename(activeMenuId, report?.customName || new URL(report?.url).hostname); setActiveMenuId(null); }} />
+                <MenuButton isDark={isDark} icon={<Edit2 size={14} />} label="Rename" onClick={() => { 
+                  const report = reports.find(r => r._id === activeMenuId); 
+                  const fallbackName = (() => {
+                    try { return new URL(report?.url).hostname; }
+                    catch(e) { return report?.url; }
+                  })();
+                  handleRename(activeMenuId, report?.customName || fallbackName); 
+                  setActiveMenuId(null); 
+                }} />
                 <div style={dividerStyle} />
                 <MenuButton isDark={isDark} icon={<Pin size={14} />} label="Pin chat" onClick={() => { handlePin(activeMenuId); setActiveMenuId(null); }} />
                 <div style={dividerStyle} />

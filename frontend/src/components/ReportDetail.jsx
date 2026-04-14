@@ -93,9 +93,9 @@ const getTableColumns = (tab) => {
     case 'network': return ['Page', 'Method', 'Status', 'Time', 'Url'];
     case 'links': return ['Page', 'Link', 'Status'];
     case 'console': return ['Page', 'Message', 'Type'];
-    case 'layout': return ['Page', 'Device', 'Issue', 'Selector'];
+    case 'layout': return ['Page', 'Context', 'Issue', 'Selector'];
     case 'accessibility': return ['Page', 'Issue', 'Severity', 'Element'];
-    case 'forms': return ['Page', 'Form', 'Type', 'Field', 'Severity', 'Message'];
+    case 'forms': return ['Page', 'Context', 'Form', 'Type', 'Field', 'Severity'];
     default: return [];
   }
 };
@@ -160,9 +160,9 @@ const IssueTable = ({ data, columns, setRemediationCode, onAskAI, reportId }) =>
       guide: `Review the ${row.field} field in ${row.form}. Ensure labels and validation constraints are correctly implemented.`
     };
     return {
-      cause: "General deviation from optimized architectural standards.",
-      impact: "Sub-optimal user experience and neural processing inefficiency.",
-      guide: "Audit target element's parent hierarchy for redundant styles or layout shifts."
+      cause: row.technicalImpact || "General deviation from optimized architectural standards.",
+      impact: row.issue || "Sub-optimal user experience and neural processing inefficiency.",
+      guide: row.recommendation || "Audit target element's parent hierarchy for redundant styles or layout shifts."
     };
   };
 
@@ -201,6 +201,17 @@ const IssueTable = ({ data, columns, setRemediationCode, onAskAI, reportId }) =>
                       );
                     }
 
+                    if (col === 'Context') {
+                      return (
+                        <td key={col} className="py-3 px-4 glass-euphoria first:rounded-l-xl last:rounded-r-xl border-y border-[var(--eu-glass-border)] first:border-l last:border-r">
+                           <div className="flex items-center gap-2">
+                             <div className="size-1.5 rounded-full bg-eu-accent animate-pulse" />
+                             <span className="text-[10px] font-black uppercase text-white/90 tracking-widest">{value || 'Main Layout'}</span>
+                           </div>
+                        </td>
+                      );
+                    }
+
                     if (col === 'RiskLevel' || col === 'Outcome') {
                       const isSecure = value === 'Secure' || value === 'System Resilience';
                       return (
@@ -211,9 +222,36 @@ const IssueTable = ({ data, columns, setRemediationCode, onAskAI, reportId }) =>
                     }
 
                     if (col === 'Payload' || col === 'FormSelector' || col === 'Element' || col === 'Selector' || col === 'Message') {
+                      const looksLikeUrl = typeof value === 'string' && (value.startsWith('http') || value.startsWith('/') || value.includes('data:image'));
+                      const isImageUrl = looksLikeUrl && (value.match(/\.(jpeg|jpg|gif|png|webp|svg)/i) || col === 'Selector' || col === 'Element');
+                      const fileName = isImageUrl ? value.split('/').pop().split('?')[0] : null;
+
                       return (
                         <td key={col} className="py-3 px-4 glass-euphoria first:rounded-l-xl last:rounded-r-xl border-y border-white/5 first:border-l last:border-r max-w-sm">
-                          <code className="text-[10px] bg-[var(--eu-bg-void)]/60 px-2 py-1 rounded-lg text-eu-accent/80 border border-[var(--eu-glass-border)] block break-all font-mono shadow-inner">{value || 'NULL'}</code>
+                          <div className="flex flex-col gap-3">
+                            {isImageUrl && (
+                              <div className="flex items-center gap-3 bg-[var(--eu-bg-void)]/40 p-2 rounded-xl border border-white/5 group/img-preview">
+                                <div className="relative size-10 rounded-lg overflow-hidden shrink-0 border border-white/10 bg-black/20 shadow-neon">
+                                  <img 
+                                    src={value} 
+                                    alt="Issue context" 
+                                    className="w-full h-full object-cover group-hover/img-preview:scale-125 transition-transform duration-500" 
+                                    onError={(e) => {
+                                      e.target.style.display = 'none';
+                                      e.target.parentElement.classList.add('bg-primary/20');
+                                    }}
+                                  />
+                                </div>
+                                <div className="flex flex-col overflow-hidden">
+                                  <span className="text-[10px] font-black text-eu-accent truncate uppercase tracking-widest">{fileName || 'Neural Asset'}</span>
+                                  <span className="text-[8px] text-[var(--eu-text-muted)] truncate opacity-50">{value}</span>
+                                </div>
+                              </div>
+                            )}
+                            {!isImageUrl && (
+                              <code className="text-[10px] bg-[var(--eu-bg-void)]/60 px-2 py-1 rounded-lg text-eu-accent/80 border border-[var(--eu-glass-border)] block break-all font-mono shadow-inner">{value || 'NULL'}</code>
+                            )}
+                          </div>
                         </td>
                       );
                     }
@@ -278,7 +316,7 @@ const IssueTable = ({ data, columns, setRemediationCode, onAskAI, reportId }) =>
                               </div>
                               <div className="space-y-2">
                                 <p className="text-[9px] font-black uppercase tracking-widest text-primary">Security / UX Impact</p>
-                                <p className="text-xs text-[var(--eu-text-main)] opacity-80 font-medium leading-relaxed italic">"{remediation.impact}"</p>
+                                 <p className="text-xs text-[var(--eu-text-main)] opacity-80 font-medium leading-relaxed italic">"{remediation.impact}"</p>
                               </div>
                             </div>
 
@@ -286,6 +324,18 @@ const IssueTable = ({ data, columns, setRemediationCode, onAskAI, reportId }) =>
                               <p className="text-[9px] font-black uppercase tracking-widest text-eu-accent mb-2">Remediation Intelligence</p>
                               <p className="text-xs text-[var(--eu-text-main)] opacity-60 font-medium leading-relaxed">{remediation.guide}</p>
                             </div>
+
+                            {row.htmlSnippet && row.htmlSnippet !== 'UNAVAILABLE' && (
+                              <div className="p-4 bg-black/40 rounded-2xl border border-white/5 space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <Code size={12} className="text-eu-accent" />
+                                  <p className="text-[9px] font-black uppercase tracking-widest text-white/40">Target Code Fragment</p>
+                                </div>
+                                <pre className="text-[10px] font-mono text-eu-accent/80 bg-black/20 p-3 rounded-lg border border-white/5 overflow-x-auto whitespace-pre-wrap break-all">
+                                  <code>{row.htmlSnippet}</code>
+                                </pre>
+                              </div>
+                            )}
                           </div>
 
                           <div className="w-full md:w-64 space-y-4">
@@ -430,7 +480,15 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
           </button>
           <div>
             <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-              <h2 className="text-base sm:text-lg md:text-xl font-black premium-gradient-text tracking-[0.2em] uppercase leading-none break-all font-outfit">{new URL(report.url).hostname}</h2>
+              <h2 className="text-base sm:text-lg md:text-xl font-black premium-gradient-text tracking-[0.2em] uppercase leading-none break-all font-outfit">
+                {(() => {
+                  try {
+                    return new URL(report.url).hostname;
+                  } catch (e) {
+                    return report.url || 'Sentinel Target';
+                  }
+                })()}
+              </h2>
               <span className={`px-5 py-2 rounded-2xl text-[10px] sm:text-[12px] font-black uppercase tracking-[0.3em] border bg-primary/10 border-primary/30 text-primary shadow-neon`}>
                 {report.status}
               </span>
@@ -480,6 +538,23 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
             className="flex-none flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all shadow-neon text-white"
           >
             PDF <BarChart3 size={10} />
+          </button>
+
+          <button
+            onClick={async () => {
+              const confirmed = await confirm({
+                title: "Rescan Protocol",
+                message: "This will launch a fresh diagnostic trace using your current configuration. Previous data remains archived in comparison logs.",
+                confirmText: "Execute Rescan",
+                type: "info"
+              });
+              if (confirmed && onReScan) {
+                onReScan(report.url, reportId);
+              }
+            }}
+            className="flex-none flex items-center justify-center gap-2 bg-eu-accent-violet/20 hover:bg-eu-accent-violet/40 border border-eu-accent-violet/30 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest text-[#a78bfa] transition-all shadow-neon"
+          >
+            Rescan <Zap size={10} />
           </button>
 
           <button
@@ -871,7 +946,15 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
                     <div className="flex items-center justify-between px-1">
                       <div className="space-y-0.5 min-w-0">
                         <p className="text-[8px] font-black text-eu-accent uppercase tracking-[0.2em] font-outfit">{s.type}</p>
-                        <p className="text-[11px] font-black text-white truncate max-w-[150px] font-outfit">{new URL(s.page).pathname}</p>
+                        <p className="text-[11px] font-black text-white truncate max-w-[150px] font-outfit">
+                          {(() => {
+                            try {
+                              return new URL(s.page).pathname;
+                            } catch (e) {
+                              return s.page || 'Root';
+                            }
+                          })()}
+                        </p>
                       </div>
                       <button
                         onClick={() => setPreviewImage(s)}
@@ -957,7 +1040,15 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
 
                  <div className="p-8 bg-eu-accent/5 border-t border-white/5">
                     <p className="text-[9px] font-black text-eu-accent uppercase tracking-widest mb-1">Diagnostic Context</p>
-                    <p className="text-[11px] font-black text-white/60 uppercase">Manual remediation required for neural path: {new URL(previewImage.page).pathname}</p>
+                    <p className="text-[11px] font-black text-white/60 uppercase">
+                      Manual remediation required for neural path: {(() => {
+                        try {
+                          return new URL(previewImage.page).pathname;
+                        } catch (e) {
+                          return previewImage.page || 'Root';
+                        }
+                      })()}
+                    </p>
                  </div>
               </div>
             </motion.div>

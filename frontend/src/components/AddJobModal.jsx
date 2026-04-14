@@ -18,12 +18,18 @@ const AddJobModal = ({ isOpen, onClose, initialUrl = '', setAlert }) => {
         e.preventDefault();
         if (!url) return;
 
+        // Auto-normalize URL (Add protocol if missing)
+        let normalizedUrl = url.trim();
+        if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+            normalizedUrl = `https://${normalizedUrl}`;
+        }
+
         setLoading(true);
         try {
             const userId = localStorage.getItem('userId');
             await axios.post('http://localhost:5005/api/scheduling/jobs', {
                 ...schedule,
-                url,
+                url: normalizedUrl,
                 userId
             });
             setAlert({ type: 'success', message: 'Scheduling protocol established.' });

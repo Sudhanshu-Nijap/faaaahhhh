@@ -16,10 +16,17 @@ const qaAgent = require('../services/qaAgent');
 const scanEngine = require('../services/scanEngine');
 const comparisonService = require('../services/comparisonService');
 
-// 3. Connect to MongoDB (Worker has its own connection)
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('[Worker]: Connected to Tactical Database'))
-    .catch(err => console.error('[Worker]: DB Error:', err));
+// 3. Connection Substrate Logic
+const connectWithRetry = async () => {
+    try {
+        await mongoose.connect(process.env.MONGODB_URI);
+        console.log('[Worker]: Connected to Tactical Database');
+    } catch (err) {
+        console.error('[Worker]: DB Initial connection failed. Retrying in 2s...', err.message);
+        await new Promise(res => setTimeout(res, 2000));
+        return connectWithRetry();
+    }
+};
 
 // --- 4. Tactical Event Substrate ---
 let mainChatMessageDispatcher = null;
@@ -50,9 +57,31 @@ const safeMessageUplink = async (chatId, type, content, scanReportId, reportSumm
     return msg;
 };
 
-const calculateReportHealth = (report) => {
+const calculateReportHealth = (report, lhMetrics = null) => {
     if (!report) return 0;
     
+    // If Lighthouse metrics are available, they become the primary driver (80% weight)
+    if (lhMetrics && (lhMetrics.performance || lhMetrics.accessibility || lhMetrics.seo || lhMetrics.bestPractices)) {
+        const lhAvg = (
+            (lhMetrics.performance || 0) + 
+            (lhMetrics.accessibility || 0) + 
+            (lhMetrics.seo || 0) + 
+            (lhMetrics.bestPractices || 0)
+        ) / 4;
+        
+        // Apply small penalty for tactical failures (Broken links, console errors)
+        const tacticalPenalty = (
+            (report.brokenLinks?.length || 0) * 2 + 
+            (report.consoleErrors?.length || 0) * 0.5 +
+            (report.networkLogs?.filter(n => n.status >= 500).length || 0) * 2
+        );
+
+        const score = Math.max(1, Math.round(lhAvg - tacticalPenalty));
+        console.log(`[Scoring]: Lighthouse Centric -> Avg: ${lhAvg}, Penalty: ${tacticalPenalty}, Final: ${score}`);
+        return score;
+    }
+
+    // Fallback Heuristic if Lighthouse is disabled
     const weights = { network: 0.1, links: 10, console: 5, ui: 10, accessibility: 10 };
     const counts = {
         network: report.networkLogs?.length || 0,
@@ -67,13 +96,14 @@ const calculateReportHealth = (report) => {
     const scaledScore = 100 * Math.exp(-rawDeduction / decayConstant);
     const score = Math.max(1, Math.round(scaledScore));
     
-    console.log(`[Scoring]: ${report.url} -> RawDeduction: ${rawDeduction}, Score: ${score}%`);
+    console.log(`[Scoring]: Fallback Heuristic -> RawDeduction: ${rawDeduction}, Score: ${score}%`);
     return score;
 };
 
 // 5. Orchestration Pipeline
 async function runMasterOrchestrator(data) {
     const { reportId, baseUrl, tests, scope, chatId } = data;
+    console.log(`[MasterWorker]: Starting Tactical Pulse for Report: ${reportId} (Target: ${baseUrl})`);
     
     // Initialize primary dispatcher
     mainChatMessageDispatcher = persistMessageLocally;
@@ -87,25 +117,64 @@ async function runMasterOrchestrator(data) {
             if (parentPort) parentPort.postMessage({ type: 'progress', percent, stage });
         };
 
-        // --- STAGE 1: Infrastructure Discovery (Vite/Playwright) ---
+        // --- PRIMARY PARALLEL AUDIT ---
         emitProgress(5, 'Engaging Integrated Audit Core...');
         
         await Promise.all([
+            // 1. Primary Technical & Structural Audit (Playwright)
             (async () => {
                 const activeSuite = Array.isArray(tests) ? tests.filter(t => ['console', 'network', 'ui', 'links', 'forms'].includes(t)) : [];
                 if (scope === 'single') {
-                    await scanEngine.runSinglePageScan(reportId, baseUrl, activeSuite, (p, s) => emitProgress(5 + Math.round(p * 0.45), s));
+                    // Integration scan handles 5% to 45%
+                    const result = await scanEngine.runSinglePageScan(reportId, baseUrl, activeSuite, (p, s) => {
+                        const scaled = 5 + Math.round(p * 0.40);
+                        emitProgress(scaled, s);
+                    });
+                    if (result) {
+                        await scanEngine.persistScanData(reportId, result);
+                    }
                 } else {
-                    await scanEngine.runTargetedCrawlScan(reportId, baseUrl, activeSuite, (p, s) => emitProgress(5 + Math.round(p * 0.45), s), scope);
+                    await scanEngine.runTargetedCrawlScan(reportId, baseUrl, activeSuite, (p, s) => {
+                        const scaled = 5 + Math.round(p * 0.40);
+                        emitProgress(scaled, s);
+                    }, scope);
                 }
+                console.log('[MasterWorker]: Technical Audit Core phase finalized.');
             })(),
-            (async () => {
-                // Post early insight using the safe uplink (Skip for rescans to avoid duplication)
-                if (workerData.prevReportId) return;
 
+            // 2. Quality Matrix Audit (Lighthouse Dedicated Pulse)
+            (async () => {
+                const runIh = tests.includes('lighthouse') || tests.includes('performance') || tests.includes('accessibility');
+                if (!runIh) return;
+
+                console.log('[MasterWorker]: Engaging Lighthouse Multi-Threaded Pulse...');
+                // Lighthouse handles 45% to 85%
+                const dedicatedData = await qaScanner.runDedicatedScan(baseUrl).catch(err => {
+                    console.error(`[MasterWorker]: Dedicated Lighthouse Audit FAILED: ${err.message}`);
+                    return null;
+                });
+
+                if (dedicatedData && (dedicatedData.scores?.performance >= 0)) {
+                    console.log(`[MasterWorker]: Synchronizing tactical scores for ${baseUrl}`);
+                    lighthouseMetrics = dedicatedData.scores;
+                    // Pre-sync accessibility issues to the DB
+                    if (dedicatedData.accessibilityIssues?.length > 0) {
+                        try {
+                            const ScanReport = require('../models/ScanReport');
+                            await ScanReport.findByIdAndUpdate(reportId, { 
+                                $push: { accessibilityIssues: { $each: dedicatedData.accessibilityIssues } } 
+                            });
+                        } catch (e) { console.error('[MasterWorker]: Failed to push early accessibility telemetry:', e.message); }
+                    }
+                }
+                emitProgress(85, 'Quality Matrix pulse synchronization complete.');
+            })(),
+
+            // 3. Early AI Insight Dispatch
+            (async () => {
+                if (workerData.prevReportId) return;
                 try {
                     const insightSummary = "Strategic Analysis: Sentinel AI is engaging core diagnostics for " + baseUrl + "...";
-                    // Change type from 'report' to 'ai' to avoid duplicate scan counts
                     const earlyMsg = await safeMessageUplink(chatId, 'ai', insightSummary, reportId, null);
                     if (earlyMsg && parentPort) {
                         parentPort.postMessage({ type: 'new-message', message: earlyMsg.toObject() });
@@ -116,45 +185,7 @@ async function runMasterOrchestrator(data) {
             })()
         ]);
 
-        emitProgress(50, 'Infrastructure Audit Phase Complete.');
-
-        // --- STAGE 2: Quality Matrix Audit (Lighthouse) ---
-        // RUN SEQUENTIALLY TO AVOID CHROMIUM CONFLICTS ON WINDOWS
-        const runIh = tests.includes('lighthouse') || tests.includes('performance') || tests.includes('accessibility');
-        if (runIh) {
-            emitProgress(60, 'Engaging Dedicated Lighthouse Engine...');
-            
-            // Heartbeat progress to keep UI alive during long audit
-            let lighthouseWait = 60;
-            const lbInterval = setInterval(() => {
-                if (lighthouseWait < 85) {
-                    lighthouseWait += 2;
-                    emitProgress(lighthouseWait, 'Lighthouse Pulse in progress: Deciphering quality metrics...');
-                }
-            }, 3000);
-
-            const dedicatedData = await qaScanner.runDedicatedScan(baseUrl).catch(err => {
-                clearInterval(lbInterval);
-                console.error(`[MasterWorker]: Dedicated Lighthouse Audit FAILED: ${err.message}`);
-                return null;
-            });
-
-            clearInterval(lbInterval);
-
-            if (dedicatedData && (dedicatedData.scores?.performance >= 0)) {
-                console.log(`[MasterWorker]: Synchronizing tactical scores for ${baseUrl}`);
-                lighthouseMetrics = dedicatedData.scores;
-                // Pre-sync accessibility issues to the DB for health calculation
-                await ScanReport.findByIdAndUpdate(reportId, {
-                    $push: { accessibilityIssues: { $each: dedicatedData.accessibilityIssues || [] } }
-                });
-                emitProgress(90, 'Lighthouse Telemetry Synchronized.');
-            } else {
-                console.warn(`[MasterWorker]: Lighthouse returned 0 or failed for ${baseUrl}.`);
-            }
-        } else {
-            emitProgress(90, 'Skipping Lighthouse (User specific request).');
-        }
+        emitProgress(90, 'All tactical pulses converged. Finalizing Neural Report...');
 
         // --- STAGE 3: AI Synthesis & Evolution ---
         emitProgress(92, 'Syncing Final AI Analysis...');
@@ -168,8 +199,8 @@ async function runMasterOrchestrator(data) {
 
         if (!currentReport) throw new Error('Neural focus lost: Report not found during synthesis.');
 
-        // 1. Calculate health score locally first
-        const healthScore = calculateReportHealth(currentReport);
+        // 1. Calculate health score using Lighthouse as the primary driver
+        const healthScore = calculateReportHealth(currentReport, lighthouseMetrics);
         currentReport.healthScore = healthScore; 
 
         // 2. Run AI Agent and capture insights (avoiding direct DB updates in agent)
@@ -238,5 +269,18 @@ async function runMasterOrchestrator(data) {
     }
 }
 
-// Start immediately
-runMasterOrchestrator(workerData);
+// ── Deadlock Watchdog (5m cutoff) ──────────────────────────────────────────
+const watchdog = setTimeout(async () => {
+    console.error(`[MasterWorker]: Neural Watchdog Triggered for ${workerData.reportId}. Force terminating...`);
+    await ScanReport.findByIdAndUpdate(workerData.reportId, { 
+        status: 'failed', 
+        customName: 'Scan timed out after 5m of inactivity.' 
+    });
+    parentPort.postMessage({ type: 'failed', error: 'Neural substrate timeout' });
+    process.exit(1);
+}, 300000); // 5 minutes
+
+// Start immediately with connection synchronization
+connectWithRetry().then(() => {
+    runMasterOrchestrator(workerData).then(() => clearTimeout(watchdog));
+});

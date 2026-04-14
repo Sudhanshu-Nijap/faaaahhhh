@@ -30,8 +30,13 @@ const SchedulingDashboard = ({ setAlert, confirm }) => {
 
     const fetchJobs = async () => {
         try {
-            setLoading(true);
             const userId = localStorage.getItem('userId');
+            if (!userId) {
+                setLoading(false);
+                return;
+            }
+            
+            setLoading(true);
             const { data } = await axios.get(`http://localhost:5005/api/scheduling/jobs?userId=${userId}`);
             setJobs(data);
         } catch (err) {
@@ -115,6 +120,17 @@ const SchedulingDashboard = ({ setAlert, confirm }) => {
         }, 800);
     };
 
+    const handleManualRun = async (job) => {
+        try {
+            await axios.post(`http://localhost:5005/api/scheduling/job/${job._id}/run`);
+            setAlert({ type: 'success', message: 'Manual override initiated. Generating report...' });
+            // Local state optimistic update (backend will also emit 'job-sync')
+            setJobs(prev => prev.map(j => j._id === job._id ? { ...j, status: 'running' } : j));
+        } catch (err) {
+            setAlert({ type: 'error', message: 'Manual execution request failed.' });
+        }
+    };
+
     const getNextRunTime = (job) => {
         const now = new Date();
         const [hours, minutes] = job.time.split(':').map(Number);
@@ -134,76 +150,88 @@ const SchedulingDashboard = ({ setAlert, confirm }) => {
 
     const ScheduleCard = ({ job }) => (
         <motion.div 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className={`flex justify-start mb-4 group`}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`glass-euphoria border border-white/5 rounded-[32px] p-6 transition-all shadow-xl hover:border-secondary/30 relative group overflow-hidden ${!job.isActive ? 'opacity-60 grayscale-[0.5]' : ''}`}
         >
-            <div className="flex flex-col gap-1 max-w-[90%]">
-                <div className="flex items-center gap-1.5 px-1">
-                    <Activity size={10} className="text-secondary opacity-70" />
-                    <span className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Scheduler Bot</span>
+            {/* Decorative background accent */}
+            <div className="absolute top-0 right-0 size-24 bg-secondary/5 blur-3xl rounded-full" />
+            
+            <div className="flex items-start justify-between mb-6 relative z-10">
+                <div className="flex flex-col gap-1.5 min-w-0">
+                    <div className="flex items-center gap-2">
+                        <div className="size-2 rounded-full bg-secondary animate-pulse" />
+                        <h4 className="text-[13px] font-black text-white truncate max-w-[220px] uppercase tracking-tight font-outfit">
+                            {(() => {
+                                try { return new URL(job.url).hostname; }
+                                catch (e) { return job.url; }
+                            })()}
+                        </h4>
+                    </div>
+                    <p className="text-[9px] font-mono text-slate-500 truncate max-w-[200px]">{job.url}</p>
                 </div>
-                
-                <div className={`p-5 glass-euphoria border border-white/5 rounded-[24px] rounded-tl-sm transition-all shadow-xl hover:border-secondary/20 min-w-[320px] ${!job.isActive ? 'opacity-60 grayscale-[0.5]' : ''}`}>
-                    <div className="flex items-start justify-between mb-4">
-                        <div className="flex flex-col">
-                            <h4 className="text-[12px] font-black text-white truncate max-w-[200px] uppercase tracking-tight">{new URL(job.url).hostname}</h4>
-                            <p className="text-[8px] font-mono text-slate-500 truncate mt-0.5">{job.url}</p>
-                        </div>
-                        <div className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${
-                            job.status === 'running' ? 'bg-secondary/10 text-secondary animate-pulse' : 
-                            job.status === 'completed' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-white/5 text-slate-600'
-                        }`}>
-                            {job.status}
-                        </div>
-                    </div>
+                <div className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${
+                    job.status === 'running' ? 'bg-secondary/10 border-secondary/20 text-secondary animate-pulse' : 
+                    job.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-white/5 border-white/10 text-slate-500'
+                }`}>
+                    {job.status}
+                </div>
+            </div>
 
-                    <div className="grid grid-cols-2 gap-2 mb-4">
-                        <div className="p-2 bg-black/40 rounded-xl border border-white/5">
-                            <p className="text-[7px] font-black text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-1">
-                                <Zap size={8} /> Mode
-                            </p>
-                            <p className="text-[10px] font-bold text-white uppercase">{job.mode}</p>
-                        </div>
-                        <div className="p-2 bg-black/40 rounded-xl border border-white/5">
-                            <p className="text-[7px] font-black text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-1">
-                                <Clock size={8} /> Trigger
-                            </p>
-                            <p className="text-[10px] font-bold text-white">{job.time}</p>
-                        </div>
-                    </div>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="p-3 bg-black/40 rounded-2xl border border-white/5 hover:border-white/10 transition-colors">
+                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                        <Zap size={10} className="text-secondary" /> Strategy
+                    </p>
+                    <p className="text-[11px] font-black text-white uppercase tracking-tight">{job.mode}</p>
+                </div>
+                <div className="p-3 bg-black/40 rounded-2xl border border-white/5 hover:border-white/10 transition-colors">
+                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                        <Clock size={10} className="text-secondary" /> Sync Window
+                    </p>
+                    <p className="text-[11px] font-black text-white">{job.time}</p>
+                </div>
+            </div>
 
-                    <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                        <div className="flex gap-2">
-                            <button 
-                                onClick={() => handleToggleActive(job)}
-                                className={`size-8 rounded-lg flex items-center justify-center border transition-all ${
-                                    job.isActive ? 'hover:bg-amber-500/10 border-amber-500/20 text-amber-500' : 'hover:bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
-                                }`}
-                            >
-                                {job.isActive ? <Pause size={14} /> : <Play size={14} />}
-                            </button>
-                            <button 
-                                onClick={() => handleDelete(job._id)}
-                                className="size-8 rounded-lg flex items-center justify-center border border-white/5 hover:bg-red-500/10 hover:border-red-500/20 text-slate-500 hover:text-red-500 transition-all"
-                            >
-                                <Trash2 size={14} />
-                            </button>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-[7px] font-black text-slate-600 uppercase tracking-widest">Next Run</p>
-                            <p className="text-[9px] font-bold text-secondary">{job.isActive ? getNextRunTime(job) : 'Disabled'}</p>
-                        </div>
-                    </div>
+            <div className="flex items-center justify-between pt-5 border-t border-white/5">
+                <div className="flex gap-2.5">
+                    <button 
+                        onClick={() => handleToggleActive(job)}
+                        className={`size-9 rounded-xl flex items-center justify-center border transition-all ${
+                            job.isActive ? 'bg-amber-500/5 hover:bg-amber-500 border-amber-500/20 hover:border-amber-500 text-amber-500 hover:text-white' : 'bg-emerald-500/5 hover:bg-emerald-500 border-emerald-500/20 hover:border-emerald-500 text-emerald-500 hover:text-white'
+                        }`}
+                        title={job.isActive ? "Pause Protocol" : "Resume Protocol"}
+                    >
+                        {job.isActive ? <Pause size={16} /> : <Play size={16} />}
+                    </button>
+                    <button 
+                        onClick={() => handleManualRun(job)}
+                        disabled={job.status === 'running'}
+                        className="size-9 rounded-xl flex items-center justify-center border border-secondary/20 bg-secondary/10 text-secondary hover:bg-secondary hover:text-white transition-all disabled:opacity-30 shadow-neon-small"
+                        title="Execute Protocol Now"
+                    >
+                        <Zap size={16} />
+                    </button>
+                    <button 
+                        onClick={() => handleDelete(job._id)}
+                        className="size-9 rounded-xl flex items-center justify-center border border-white/5 bg-white/5 hover:bg-primary border-white/10 hover:border-primary text-slate-500 hover:text-white transition-all"
+                        title="Terminate Job"
+                    >
+                        <Trash2 size={16} />
+                    </button>
+                </div>
+                <div className="text-right">
+                    <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-0.5">Countdown</p>
+                    <p className="text-[10px] font-black text-secondary uppercase tracking-tight">{job.isActive ? getNextRunTime(job) : 'Standby'}</p>
                 </div>
             </div>
         </motion.div>
     );
 
     return (
-        <div className="h-full flex flex-col glass-node overflow-hidden">
+        <div className="h-full flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="flex-none p-4 border-b border-white/5 flex items-center justify-between bg-black/20">
+            <div className="flex-none p-4 flex items-center justify-between border-b border-white/5">
                 <div className="flex items-center gap-3">
                     <div className="size-9 bg-secondary/10 rounded-xl flex items-center justify-center border border-secondary/20 shadow-neon">
                         <Calendar className="text-secondary size-5" />
@@ -227,7 +255,7 @@ const SchedulingDashboard = ({ setAlert, confirm }) => {
             </div>
 
             {/* Content / Chat Flow */}
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-[var(--eu-bg-void)]">
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                 {loading ? (
                     <div className="h-full flex flex-col items-center justify-center gap-4 opacity-50">
                         <Loader2 className="animate-spin text-secondary" size={32} />
@@ -244,22 +272,22 @@ const SchedulingDashboard = ({ setAlert, confirm }) => {
                         </div>
                     </div>
                 ) : (
-                    <div className="space-y-6 pb-20">
-                        <SystemBubble content="Registry Link Established" icon={Activity} />
-                        
-                        {/* Grouped Rendering as Chat Messages */}
-                        {jobs
-                            .filter(j => {
-                                const matchesUrl = j.url.toLowerCase().includes(filter.url.toLowerCase());
-                                const matchesType = filter.type === 'all' || j.scanType === filter.type;
-                                return matchesUrl && matchesType;
-                            })
-                            .map(job => (
-                                <ScheduleCard key={job._id} job={job} />
-                            ))}
+                    <div className="pb-20">
+                        {/* Grid Layer */}
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                            {jobs
+                                .filter(j => {
+                                    const matchesUrl = j.url.toLowerCase().includes(filter.url.toLowerCase());
+                                    const matchesType = filter.type === 'all' || j.scanType === filter.type;
+                                    return matchesUrl && matchesType;
+                                })
+                                .map(job => (
+                                    <ScheduleCard key={job._id} job={job} />
+                                ))}
+                        </div>
 
                         {isTyping && (
-                           <div className="flex justify-start">
+                           <div className="flex justify-start mt-6">
                                <div className="flex gap-1.5 p-3 bg-white/5 rounded-xl border border-white/10">
                                    {[0, 1, 2].map(i => (
                                        <motion.div key={i}
@@ -276,7 +304,7 @@ const SchedulingDashboard = ({ setAlert, confirm }) => {
             </div>
 
             {/* Footer / Filter & Input */}
-            <div className="flex-none p-4 border-t border-white/10 bg-black/40 space-y-4">
+            <div className="flex-none p-4 space-y-4 border-t border-white/5">
                  {/* Filters */}
                  <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
                     <div className="relative shrink-0 w-48">

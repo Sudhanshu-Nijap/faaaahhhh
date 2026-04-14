@@ -49,7 +49,10 @@ const ReportCard = ({ report, onClick, onDelete, onPin, onShare, onRename, onArc
     }
   };
 
-  const domain = new URL(report.url).hostname;
+  const domain = (() => {
+    try { return new URL(report.url).hostname; }
+    catch (e) { return report.url; }
+  })();
 
   const handleDelete = async (e) => {
     e.stopPropagation();

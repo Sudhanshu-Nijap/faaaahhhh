@@ -151,6 +151,8 @@ const ChatInterface = ({
   setAlert,
   confirm
 }) => {
+  const isScheduleView = activeView === 'schedule';
+
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -431,45 +433,50 @@ const ChatInterface = ({
   return (
     <div className="flex flex-col h-full glass-node relative font-inter">
       {/* ── Header ── */}
-      <div className="px-4 py-3 border-b border-[var(--eu-glass-border)] flex items-center gap-3 bg-[var(--eu-bg-void)] z-10">
-        <div className="p-1.5 border border-[var(--eu-glass-border)] rounded-xl bg-[var(--eu-bg-void)] flex items-center justify-center">
-          <Bot size={18} className="text-[var(--eu-text-main)] opacity-60" />
-        </div>
-        <div className="flex-1 min-w-0">
-          {chatMeta ? (
-            <>
-              <p className="text-[11px] font-black text-[var(--eu-text-main)] truncate uppercase tracking-tight">
-                {chatMeta.customName || new URL(chatMeta.url).hostname}
-              </p>
-              <p className="hidden md:block text-[8px] text-slate-500 font-mono truncate">{chatMeta.url}</p>
-            </>
-          ) : (
-            <p className="text-[11px] font-black text-[var(--eu-text-main)] opacity-50 uppercase tracking-tight">New Session</p>
-          )}
-        </div>
+      {!isScheduleView && (
+        <div className="px-4 py-3 border-b border-[var(--eu-glass-border)] flex items-center gap-3 bg-[var(--eu-bg-void)] z-10">
+          <div className="p-1.5 border border-[var(--eu-glass-border)] rounded-xl bg-[var(--eu-bg-void)] flex items-center justify-center">
+            <Bot size={18} className="text-[var(--eu-text-main)] opacity-60" />
+          </div>
+          <div className="flex-1 min-w-0">
+            {chatMeta ? (
+              <>
+                <p className="text-[11px] font-black text-[var(--eu-text-main)] truncate uppercase tracking-tight">
+                  {chatMeta.customName || (() => {
+                    try { return new URL(chatMeta.url).hostname; }
+                    catch (e) { return chatMeta.url; }
+                  })()}
+                </p>
+                <p className="hidden md:block text-[8px] text-slate-500 font-mono truncate">{chatMeta.url}</p>
+              </>
+            ) : (
+              <p className="text-[11px] font-black text-[var(--eu-text-main)] opacity-50 uppercase tracking-tight">New Session</p>
+            )}
+          </div>
 
-        <div className="flex items-center gap-2">
-          {activeChatId && activeView === 'qa' && (
-            <>
-              <PreviousScansDropdown chatId={activeChatId} onSelect={onViewFullReport} />
-              <button
-                onClick={handleRescan}
-                disabled={isScanning}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-eu-accent/10 hover:bg-eu-accent border border-eu-accent/30 rounded-lg text-[9px] font-black uppercase tracking-widest text-eu-accent hover:text-white transition-all disabled:opacity-40"
-              >
-                <RefreshCw size={9} className={isScanning ? 'animate-spin' : ''} />
-                Rescan
+          <div className="flex items-center gap-2">
+            {activeChatId && activeView === 'qa' && (
+              <>
+                <PreviousScansDropdown chatId={activeChatId} onSelect={onViewFullReport} />
+                <button
+                  onClick={handleRescan}
+                  disabled={isScanning}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-eu-accent/10 hover:bg-eu-accent border border-eu-accent/30 rounded-lg text-[9px] font-black uppercase tracking-widest text-eu-accent hover:text-white transition-all disabled:opacity-40"
+                >
+                  <RefreshCw size={9} className={isScanning ? 'animate-spin' : ''} />
+                  Rescan
+                </button>
+              </>
+            )}
+            {activeView === 'qa' && (
+              <button onClick={onResetTarget}
+                className="px-3 py-1.5 bg-[var(--eu-bg-void)] hover:bg-white/5 border border-[var(--eu-glass-border)] rounded-lg text-[9px] font-black uppercase tracking-widest text-[var(--eu-text-main)] opacity-70 transition-all">
+                Reset
               </button>
-            </>
-          )}
-          {activeView === 'qa' && (
-            <button onClick={onResetTarget}
-              className="px-3 py-1.5 bg-[var(--eu-bg-void)] hover:bg-white/5 border border-[var(--eu-glass-border)] rounded-lg text-[9px] font-black uppercase tracking-widest text-[var(--eu-text-main)] opacity-70 transition-all">
-              Reset
-            </button>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Scan Progress Bar ── */}
       <AnimatePresence>

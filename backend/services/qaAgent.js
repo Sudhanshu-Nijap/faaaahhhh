@@ -39,12 +39,12 @@ class QAAgent {
             Analyze website diagnostic data for: ${currentReport.url}
             ${comparisonNotice}
             
-            AUDIT DATA:
-            - CONSOLE ERRORS: ${JSON.stringify(currentReport.consoleErrors || [])}
-            - NETWORK FAILURES: ${JSON.stringify(currentReport.networkLogs || [])}
+            AUDIT DATA (PRUNED FOR STABILITY):
+            - CONSOLE ERRORS: ${JSON.stringify((currentReport.consoleErrors || []).slice(0, 25))}
+            - NETWORK FAILURES: ${JSON.stringify((currentReport.networkLogs || []).slice(0, 25))}
             - LIGHTHOUSE SCORES: ${JSON.stringify(currentReport.lighthouseScores || {})}
-            - ACCESSIBILITY ISSUES: ${JSON.stringify(currentReport.accessibilityIssues || [])}
-            - FORM DIAGNOSTICS: ${JSON.stringify(currentReport.formIssues || [])}
+            - ACCESSIBILITY ISSUES: ${JSON.stringify((currentReport.accessibilityIssues || []).slice(0, 25))}
+            - FORM DIAGNOSTICS: ${JSON.stringify((currentReport.formIssues || []).slice(0, 25))}
             
             TASK: 
             Provide a technical classification (e.g., PERFORMANCE_CRITICAL, ACCESSIBILITY_FAILED, HYGIENE_STABLE).

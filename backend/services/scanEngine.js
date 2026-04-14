@@ -88,96 +88,183 @@ const scanUI = async (page) => {
             issues.push({ type: 'SEO_STRUCTURAL', issue: 'Missing H1 heading', severity: 'Low', recommendation: 'Every page should have exactly one H1 for optimal search indexing.' });
         }
 
+        // --- Spatial Intelligence Helpers ---
+        const getSpatialContext = (el) => {
+            try {
+                // Find nearest heading or section title
+                let current = el.parentElement;
+                while (current && current !== document.body) {
+                    const heading = current.querySelector('h1, h2, h3, h4, h5, h6');
+                    if (heading && heading.innerText?.trim()) return heading.innerText.trim();
+                    current = current.parentElement;
+                }
+                return 'Main Content';
+            } catch { return 'Global'; }
+        };
+
+        const generateIdentifiableSelector = (el) => {
+            if (el.tagName === 'IMG') return el.src;
+            const id = el.id ? `#${el.id}` : '';
+            const cls = (el.className && typeof el.className === 'string') 
+                ? `.${el.className.split(/\s+/).filter(Boolean).slice(0, 3).join('.')}` 
+                : '';
+            const text = el.innerText?.trim().substring(0, 20);
+            return `${el.tagName.toLowerCase()}${id}${cls}${text ? ` [${text}]` : ''}` || el.tagName.toLowerCase();
+        };
+
+        const addIssue = (item, issueObj) => {
+            if (!window.__sentinel_atlas) window.__sentinel_atlas = new Set();
+            const signature = `${issueObj.type}|${issueObj.selector}`;
+            if (window.__sentinel_atlas.has(signature)) return;
+            window.__sentinel_atlas.add(signature);
+            
+            // Capture a safe snippet of the offending element
+            let htmlSnippet = 'UNAVAILABLE';
+            try {
+                htmlSnippet = item.outerHTML?.substring(0, 500);
+            } catch (e) {}
+
+            issues.push({
+                ...issueObj,
+                location: getSpatialContext(item),
+                htmlSnippet: htmlSnippet,
+                timestamp: new Date().toISOString()
+            });
+        };
+
         // 3. Image UX
         const images = Array.from(document.querySelectorAll('img'));
         images.forEach(img => {
-            if (!img.alt && !img.hasAttribute('aria-label')) {
-                issues.push({ 
+            const rect = img.getBoundingClientRect();
+            if (rect.width < 30 && rect.height < 30) return;
+
+            if (!img.alt && !img.hasAttribute('aria-label') && !img.hasAttribute('alt')) {
+                addIssue(img, { 
                     type: 'UX_ACCESSIBILITY', 
                     issue: 'Image missing alternate text', 
                     severity: 'High', 
-                    selector: img.className || img.src.split('/').pop(),
+                    selector: img.src,
+                    technicalImpact: 'Severe compliance failure (WCAG 2.1 - 1.1.1). Non-text content must have a text alternative for screen readers.',
                     recommendation: 'Add alt=\"\" for decorative images or descriptive text for informational images.' 
                 });
             }
         });
 
-        // 4. Interactive Target Integrity (Mobile UX)
+        // 4. Interactive Target Integrity
         const interactive = Array.from(document.querySelectorAll('a, button, input[type=\"button\"], input[type=\"submit\"]'));
         interactive.forEach(el => {
             const rect = el.getBoundingClientRect();
-            // Minimum recommended touch target is 44x44px or 24x24px with sufficient spacing
-            if (rect.width > 0 && rect.height > 0 && (rect.width < 24 || rect.height < 24)) {
-                issues.push({
+            
+            if (rect.width > 0 && rect.height > 0 && (rect.width < 32 || rect.height < 32)) {
+                addIssue(el, {
                     type: 'UX_MOBILE',
                     issue: 'Small touch target detected',
-                    severity: 'Medium',
-                    selector: el.innerText?.substring(0, 20) || 'anonymous',
-                    recommendation: 'Increase target size to at least 44x44px for better mobile accessibility.'
+                    severity: 'Low',
+                    selector: generateIdentifiableSelector(el),
+                    technicalImpact: 'Sub-optimal mobile experience. Touch targets below 44px (or 10mm) increase user error rates on smaller viewports.',
+                    recommendation: 'Increase target size to at least 44x44px for optimal mobile UX.'
                 });
             }
 
-            // Empty interactive elements
-            if (el.tagName === 'BUTTON' || el.tagName === 'A') {
-                if (!el.innerText?.trim() && !el.getAttribute('aria-label') && !el.querySelector('svg, img')) {
-                    issues.push({
-                        type: 'UX_VISUAL',
-                        issue: 'Empty interactive element detected',
-                        severity: 'High',
-                        selector: el.className,
-                        recommendation: 'Ensure all buttons and links have visible text or an aria-label for screen readers.'
+            const hasIcon = el.querySelector('svg, img, i, span, em');
+            if ((el.tagName === 'BUTTON' || el.tagName === 'A') && !el.innerText?.trim() && !el.getAttribute('aria-label') && !hasIcon) {
+                addIssue(el, {
+                    type: 'UX_VISUAL',
+                    issue: 'Empty interactive element detected',
+                    severity: 'Medium',
+                    selector: generateIdentifiableSelector(el),
+                    technicalImpact: 'Interaction dead-end. Without labels or icons, users cannot identify the purpose of this element.',
+                    recommendation: 'Ensure all buttons have visible text, an icon, or an aria-label.'
+                });
+            }
+        });
+
+        // 5. Layout Shift (CLS)
+        const media = Array.from(document.querySelectorAll('img, video')).slice(0, 10);
+        media.forEach(m => {
+            const rect = m.getBoundingClientRect();
+            if (rect.width > 100 && rect.height > 100) {
+                if (!m.getAttribute('width') || !m.getAttribute('height')) {
+                    addIssue(m, {
+                        type: 'PERF_STABILITY',
+                        issue: 'Potential Layout Shift (CLS)',
+                        severity: 'Low',
+                        selector: m.tagName === 'IMG' ? m.src : m.tagName.toLowerCase(),
+                        technicalImpact: 'Cumulative Layout Shift (CLS) risk. Missing dimensions cause page jumps during asset loading, lowering Core Web Vitals score.',
+                        recommendation: 'Add explicit width and height attributes.'
                     });
                 }
             }
         });
 
-        return issues;
+        return issues.slice(0, 100);
     });
+};
+
+/**
+ * neuralScroll - Simulates a human scroll sequence to trigger lazy-loaded assets.
+ */
+const neuralScroll = async (page) => {
+    await page.evaluate(async () => {
+        await new Promise((resolve) => {
+            let totalHeight = 0;
+            const distance = 100;
+            const timer = setInterval(() => {
+                const scrollHeight = document.body.scrollHeight;
+                window.scrollBy(0, distance);
+                totalHeight += distance;
+                if (totalHeight >= scrollHeight) {
+                    clearInterval(timer);
+                    window.scrollTo(0, 0);
+                    resolve();
+                }
+            }, 100);
+        });
+    });
+    await new Promise(res => setTimeout(res, 500));
 };
 
 /**
  * runSinglePageScan - Fast, converged audit of one URL
  */
-const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgress) => {
+const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgress, atlas = null) => {
     let isBrowserClosed = false;
     let browser;
     try {
+        const urlObj = new URL(url);
+        const domain = urlObj.hostname;
+
         console.log(`[scanEngine]: Initiating Converged Lean Scan: ${url} | Modules: ${scannedModules.join(', ')}`);
-    emitProgress(5, 'Establishing neural uplink...');
+        emitProgress(5, 'Establishing neural uplink...');
     
-    // 1. Launch Browser with Remote Debugging for Lighthouse
-    const port = 9222 + Math.floor(Math.random() * 100);
-    console.log(`[scanEngine]: Spawning Chromium with Debugging Port: ${port}`);
-    browser = await chromium.launch({ 
-        headless: true,
-        args: [
-            `--remote-debugging-port=${port}`,
-            '--remote-debugging-address=127.0.0.1',
-            '--no-sandbox', 
-            '--disable-setuid-sandbox',
-            '--disable-web-security',
-            '--disable-features=IsolateOrigins,site-per-process',
-            '--ignore-certificate-errors',
-            '--force-device-scale-factor=1',
-            '--disable-background-networking',
-            '--disable-default-apps',
-            '--disable-extensions',
-            '--disable-sync',
-            '--disable-gpu',
-            '--no-first-run',
-            '--disable-notifications',
-            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        ]
-    });
+        const port = 9222 + Math.floor(Math.random() * 100);
+        browser = await chromium.launch({ 
+            headless: true,
+            args: [
+                `--remote-debugging-port=${port}`, 
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-blink-features=AutomationControlled' // Stealth: mask playwright presence
+            ]
+        });
 
         const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
             viewport: { width: 1440, height: 900 },
-            deviceScaleFactor: 2 // High DPI for production accuracy
+            deviceScaleFactor: 2,
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
         });
         const page = await context.newPage();
         
-        // 2. Playwright Diagnostics Setup
+        // --- GHOST PROTOCOL: Stealth Fingerprinting (V6 Hardening) ---
+        await applyStealthPatches(page);
+        
+        // Initialize the global atlas for this page session if provided
+        if (atlas) {
+            await page.evaluate((serializedAtlas) => {
+                window.__sentinel_atlas = new Set(serializedAtlas);
+            }, Array.from(atlas));
+        }
+
         const rawConsole = [];
         const rawNetwork = [];
         let totalSize = 0;
@@ -185,13 +272,19 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
 
         page.on('console', msg => {
             if (msg.type() === 'error') {
-                rawConsole.push({
-                    page: url,
-                    message: msg.text().substring(0, 500),
-                    type: 'error',
-                    location: msg.location().url || 'inline',
-                    recommendation: 'JS failure detected.'
-                });
+                const errorLocation = msg.location().url || '';
+                // Domain Filtering: Only report errors from the site's own domain or inline scripts
+                const isInternal = !errorLocation || errorLocation.includes(domain) || errorLocation === 'inline';
+                
+                if (isInternal) {
+                    rawConsole.push({
+                        page: url,
+                        message: msg.text().substring(0, 500),
+                        type: 'error',
+                        location: errorLocation || 'inline',
+                        recommendation: 'Fix internal script failure.'
+                    });
+                }
             }
         });
 
@@ -214,19 +307,41 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
             } catch (_) {}
         });
         
-        // --- High-Resiliency Navigation Cycle ---
+        // --- Adaptive Navigation Strategy (WAF Bypass V2) ---
         const startTime = Date.now();
+        console.log(`[scanEngine]: Initializing stealth navigation pulse for ${url}...`);
+        
+        // Randomized human-like preamble to avoid instant-bot detection
+        const jitter = 500 + Math.floor(Math.random() * 1000);
+        await new Promise(res => setTimeout(res, jitter));
+
         try {
-            await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+            // Speed Optimization: Use 'load' first, then a shorter stabilization window
+            await page.goto(url, { waitUntil: 'load', timeout: 35000 });
+            console.log(`[scanEngine]: Uplink stable (${url}). Commencing adaptive stabilization...`);
+            
+            // Wait for visual stability (much faster than networkidle for 3rd party trackers)
+            await page.waitForLoadState('domcontentloaded');
+            // Adaptive wait: 1s is usually enough after 'load' if the site isn't extremely heavy
+            await new Promise(r => setTimeout(r, 1000));
         } catch (navError) {
-            console.warn(`[scanEngine]: Neural Navigation slow for ${url}: ${navError.message}`);
-            // Fallback to simpler wait if networkidle hangs
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+            console.warn(`[scanEngine]: Tactical Navigation delay: ${navError.message}. Triggering High-Resiliency Fallback...`);
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
         }
+        
+        // Human-Simulated interaction: Perform a subtle scroll to trigger lazy-load assets
+        await page.mouse.wheel(0, 300);
+        await new Promise(r => setTimeout(r, 500));
+        await page.mouse.wheel(0, -300);
+        
         const loadTime = Date.now() - startTime;
+        console.log(`[scanEngine]: Page stabilized in ${loadTime}ms.`);
         
         // --- 2b. Converged Telemetry Capture ---
-        emitProgress(25, 'Stabilizing page & identifying UI patterns...');
+        emitProgress(25, 'Stabilizing page & triggering dynamic assets...');
+        
+        // Trigger lazy loads
+        await neuralScroll(page).catch(() => {});
         
         // Hide common overlays (cookie banners, popups) for cleaner screenshots
         await page.evaluate(() => {
@@ -260,10 +375,10 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
             path: screenshotPath, 
             fullPage: true, 
             animations: 'disabled',
-            timeout: 10000 
+            timeout: 30000 // Extended for high-fidelity captures on slower uplinks
         }).catch((e) => {
             console.warn('[scanEngine]: Full-page screenshot failed, falling back to viewport:', e.message);
-            return page.screenshot({ path: screenshotPath, fullPage: false });
+            return page.screenshot({ path: screenshotPath, fullPage: false, timeout: 15000 });
         });
 
         // 2c. Interaction Audit: Forms
@@ -277,77 +392,30 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
         const uiIssues = scannedModules.includes('ui') ? await scanUI(page).catch(() => []) : [];
         
         let brokenLinks = [];
-        if (scannedModules.includes('links')) {
-            emitProgress(60, 'Tracing navigation integrity...');
-            const links = await page.evaluate(() => 
-                Array.from(document.querySelectorAll('a[href]'))
-                    .map(a => a.href)
-                    .filter(href => href.startsWith('http'))
-                    .slice(0, 10) // Production-ready sample size
-            );
-            
-            // Parallelize link checks with Promise.all for speed
-            await Promise.all(links.map(async (link) => {
-                try {
-                    const res = await axios.head(link, { 
-                        timeout: 3000, 
-                        validateStatus: () => true,
-                        headers: { 'User-Agent': 'Sentinel-Turbo-Bot/1.0' }
-                    }).catch(async () => {
-                        // Fallback to GET if HEAD fails
-                        return await axios.get(link, { timeout: 5000, validateStatus: () => true }).catch(() => null);
-                    });
-                    
-                    if (!res || res.status >= 400) {
-                        brokenLinks.push({ page: url, link, status: res ? res.status : 0, recommendation: 'Update or remove broken link.' });
-                    }
-                } catch (_) {}
-            }));
+        // Note: Broken Link Audit is now centralized in crawler.js to avoid redundant checks per page.
+        // This significantly optimizes scan speed for multi-page crawl.
+
+
+
+        // Extract updated atlas before closing browser
+        let updatedAtlas = atlas;
+        if (!isBrowserClosed) {
+            const result = await page.evaluate(() => Array.from(window.__sentinel_atlas || []));
+            updatedAtlas = new Set(result);
         }
 
-
-
-        // 5. Finalize Playwright Telemetry
-        emitProgress(80, 'Synthesizing Session Telemetry...');
-        
-        const finalUpdate = {
-            $set: {
-                'performanceMetrics.loadTime': loadTime,
-                'performanceMetrics.pageSize': totalSize,
-                'performanceMetrics.requestCount': requestCount
-            },
-            $push: {
-                screenshots: { page: url, path: `/screenshots/${screenshotName}`, type: 'Full Audit' }
-            }
+        // Return all findings for centralized deduplication
+        return {
+            consoleErrors: rawConsole,
+            networkLogs: rawNetwork,
+            uiIssues: uiIssues.map(u => ({ ...u, page: url })),
+            formIssues: formIssues.map(f => ({ ...f, page: url })),
+            loadTime,
+            totalSize,
+            requestCount,
+            screenshot: { page: url, path: `/screenshots/${screenshotName}`, type: 'Full Audit' },
+            atlas: updatedAtlas
         };
-
-
-
-        // Aggressively append all detected telemetry to the report
-        if (scannedModules.includes('console') && rawConsole.length > 0) finalUpdate.$push.consoleErrors = { $each: rawConsole };
-        if (scannedModules.includes('network') && rawNetwork.length > 0) finalUpdate.$push.networkLogs = { $each: rawNetwork };
-        if (uiIssues.length > 0) finalUpdate.$push.uiIssues = { $each: uiIssues.map(u => ({ ...u, page: url })) };
-        if (brokenLinks.length > 0) finalUpdate.$push.brokenLinks = { $each: brokenLinks };
-        if (formIssues.length > 0) {
-            if (!finalUpdate.$push) finalUpdate.$push = {};
-            finalUpdate.$push.formIssues = { $each: formIssues.map(f => ({ ...f, page: url })) };
-        }
-        
-        console.log(`[scanEngine]: Saving tactical telemetry for ${url}...`);
-        await ScanReport.findByIdAndUpdate(reportId, finalUpdate);
-
-        // --- RELAY STEP: Purge Browser before Dedicated Fallback ---
-        console.log(`[scanEngine]: Yielding browser session for ${url}...`);
-        try {
-            await withTimeout(browser.close(), 2000, 'Browser Close');
-        } catch (closeError) {
-            console.warn(`[scanEngine]: Browser close timed out/failed: ${closeError.message}`);
-        }
-        isBrowserClosed = true;
-
-
-
-        emitProgress(100, 'Audit protocols complete.');
 
     } catch (criticalError) {
         console.error(`[scanEngine CRITICAL]: Neural Audit Gated: ${criticalError.message}`);
@@ -367,49 +435,118 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
 const runTargetedCrawlScan = async (reportId, url, tests, emitProgress, scope = 'site') => {
     console.log(`[scanEngine]: Initiating Converged Site Crawl: ${url} | Scope: ${scope}`);
     
-    // 1. Universal Discovery Phase
     const pages = await crawler.crawlWebsite(reportId, url, emitProgress, { 
         scope: scope,
         maxPages: scope === 'site' ? 20 : 1, 
         maxDepth: scope === 'site' ? 2 : 0 
     });
     
-    // 2. Multiphase Audit
     const auditLimit = 10;
     const pagesToAudit = pages.slice(0, auditLimit);
+    let sessionAtlas = new Set();
     
+    // Aggregate storage for site-wide results
+    const siteLogs = {
+        consoleErrors: [],
+        networkLogs: [],
+        uiIssues: [],
+        formIssues: [],
+        screenshots: [],
+        metrics: { totalSize: 0, loadTime: 0, requestCount: 0 }
+    };
+
     if (pagesToAudit.length > 0) {
-        console.log(`[scanEngine]: Tactical Audit for ${pagesToAudit.length} pages starting...`);
-        
         for (let i = 0; i < pagesToAudit.length; i++) {
             const pageUrl = pagesToAudit[i];
-            const displayUrl = pageUrl.replace(url, '/***/'); 
-            
-            // Sub-progress tracking for each page
             const onPageProgress = (percent, message) => {
                 const totalProgress = Math.round(((i / pagesToAudit.length) * 100) + (percent / pagesToAudit.length));
-                emitProgress(totalProgress, `Audit [${i+1}/${pagesToAudit.length}] ${displayUrl}: ${message}`);
+                emitProgress(totalProgress, `Audit [${i+1}/${pagesToAudit.length}]: ${message}`);
             };
 
-            await runSinglePageScan(reportId, pageUrl, tests, onPageProgress).catch(err => {
+            const result = await runSinglePageScan(reportId, pageUrl, tests, onPageProgress, sessionAtlas).catch(err => {
                 console.error(`[scanEngine]: Targeted page scan failed for ${pageUrl}: ${err.message}`);
-                emitProgress(Math.round(((i + 1) / pagesToAudit.length) * 100), `Audit [${i+1}/${pagesToAudit.length}] FAILED: ${displayUrl}`);
+                return null;
             });
+
+            if (result) {
+                // Aggregate and deduplicate
+                siteLogs.consoleErrors.push(...result.consoleErrors);
+                siteLogs.networkLogs.push(...result.networkLogs);
+                siteLogs.uiIssues.push(...result.uiIssues);
+                siteLogs.formIssues.push(...result.formIssues);
+                siteLogs.screenshots.push(result.screenshot);
+                siteLogs.metrics.totalSize += result.totalSize;
+                siteLogs.metrics.loadTime = Math.max(siteLogs.metrics.loadTime, result.loadTime);
+                siteLogs.metrics.requestCount += result.requestCount;
+                sessionAtlas = result.atlas;
+            }
         }
-    } else {
-        console.warn(`[scanEngine]: Discovery yielded no targets for ${url}`);
-        emitProgress(100, 'Discovery yielded no audit targets.');
+
+        // Prepare for centralized persistence
+        const siteResults = {
+            consoleErrors: siteLogs.consoleErrors,
+            uiIssues: siteLogs.uiIssues,
+            formIssues: siteLogs.formIssues,
+            networkLogs: siteLogs.networkLogs,
+            screenshots: siteLogs.screenshots,
+            loadTime: siteLogs.metrics.loadTime,
+            totalSize: siteLogs.metrics.totalSize,
+            requestCount: siteLogs.metrics.requestCount
+        };
+
+        await persistScanData(reportId, siteResults);
+        console.log('[scanEngine]: Site-wide deduped report generated.');
     }
 };
 
 /**
- * runFullScan - System Optimized Audit
+ * persistScanData - Centralized persistence for all audit results.
+ */
+const persistScanData = async (reportId, results) => {
+    console.log(`[scanEngine]: Persisting tactical telemetry for report ${reportId}...`);
+    
+    // Neural Pruning Pass (Zero-Deduplication)
+    const prune = (arr, fingerprint) => {
+        const seen = new Set();
+        return (arr || []).filter(item => {
+            const sig = fingerprint(item);
+            if (seen.has(sig)) return false;
+            seen.add(sig);
+            return true;
+        });
+    };
+
+    const finalUI = prune(results.uiIssues, u => `${u.type}|${u.issue}|${u.selector}|${u.location}`);
+    const finalForms = prune(results.formIssues, f => `${f.formName}|${f.type}|${f.fieldName}`);
+    const finalConsole = prune(results.consoleErrors, c => `${c.message}|${c.location}`);
+
+    await ScanReport.findByIdAndUpdate(reportId, {
+        $set: {
+            consoleErrors: finalConsole.slice(0, 100),
+            uiIssues: finalUI.slice(0, 100),
+            formIssues: finalForms.slice(0, 100),
+            networkLogs: (results.networkLogs || []).slice(0, 200),
+            screenshots: results.screenshots || (results.screenshot ? [results.screenshot] : []),
+            'performanceMetrics.loadTime': results.loadTime,
+            'performanceMetrics.pageSize': results.totalSize,
+            'performanceMetrics.requestCount': results.requestCount
+        }
+    });
+};
+
+/**
+ * runFullScan - System Optimized Audit (Single Page)
  */
 const runFullScan = async (reportId, url, emitProgress) => {
     const tests = ['console', 'network', 'ui', 'lighthouse', 'accessibility', 'links', 'forms'];
-    await runSinglePageScan(reportId, url, tests, emitProgress).catch(err => {
+    const result = await runSinglePageScan(reportId, url, tests, emitProgress).catch(err => {
         console.error(`[scanEngine]: Full scan execution failed: ${err.message}`);
+        return null;
     });
+
+    if (result) {
+        await persistScanData(reportId, result);
+    }
 };
 
 /**
@@ -419,9 +556,42 @@ const crawlPages = async (url, options = {}) => {
     return await crawler.crawlWebsite(null, url, null, options);
 };
 
+/**
+ * applyStealthPatches - Hardens the browser context against WAF/Bot detection.
+ * Spoofs hardware concurrency, WebGL vendor, and various browser signatures.
+ */
+async function applyStealthPatches(page) {
+    await page.addInitScript(() => {
+        // 1. Spoof WebGL Vendor/Renderer (Common WAF Signal)
+        const getParameter = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function(parameter) {
+            if (parameter === 37445) return 'Intel Inc.'; // UNMASKED_VENDOR_WEBGL
+            if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics (0x9A49)'; // UNMASKED_RENDERER_WEBGL
+            return getParameter.apply(this, arguments);
+        };
+
+        // 2. Hide Webdriver Presence
+        Object.defineProperty(navigator, 'webdriver', { get: () => false });
+
+        // 3. Spoof Plugins & Hardware
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+
+        // 4. Permission State masking
+        const originalQuery = window.navigator.permissions.query;
+        window.navigator.permissions.query = (parameters) => (
+            parameters.name === 'notifications' ?
+                Promise.resolve({ state: Notification.permission }) :
+                originalQuery(parameters)
+        );
+    });
+}
+
 module.exports = {
     runSinglePageScan,
     runTargetedCrawlScan,
+    persistScanData,
     runFullScan,
     crawlPages,
     scanConsole,

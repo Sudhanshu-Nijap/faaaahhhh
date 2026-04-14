@@ -41,10 +41,18 @@ class SchedulerService {
      */
     async processPendingJobs() {
         try {
+            // Normalize current time to IST (Asia/Kolkata) for tactical alignment
             const now = new Date();
-            const currentDay = now.getDay(); // 0-6
-            const currentHHMM = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-            const currentDate = now.toLocaleDateString('en-CA'); // YYYY-MM-DD format
+            const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+            
+            const currentDay = istTime.getDay(); // 0-6
+            const currentHHMM = istTime.toLocaleTimeString('en-GB', { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                hour12: false,
+                timeZone: 'Asia/Kolkata' 
+            });
+            const currentDate = istTime.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
 
             // Find jobs that are active and not currently running
             const jobs = await Job.find({ 
@@ -149,10 +157,26 @@ class SchedulerService {
             // ── SOCKET EMISSION ──────────────────────────────────────────
             // Notify UI that a job has started executing
             if (global.io) {
+                // 1. Job-Sync: Update the Scheduling Dashboard entry
                 global.io.emit('job-sync', { 
                     jobId: job._id.toString(), 
+                    reportId: report._id.toString(), 
                     status: 'running',
                     lastRun: job.lastRun
+                });
+
+                // 2. Scan-Progress: Wake up the Global Progress Bar immediately (0%)
+                global.io.emit('scan-progress', {
+                    reportId: report._id.toString(),
+                    percent: 0,
+                    stage: 'Initializing autonomous scan...',
+                    status: 'in-progress'
+                });
+
+                // 3. Report-Update: Trigger a global refresh of the History Lattice
+                global.io.to(`user_${job.userId.toString()}`).emit('report-update', {
+                    type: 'scan_started',
+                    reportId: report._id.toString()
                 });
             }
 

@@ -10,6 +10,9 @@ router.post('/trigger', async (req, res) => {
         const { userId, url, scanType, callbackUrl } = req.body;
         if (!userId || !url) return res.status(400).json({ error: 'User ID and Target URL are required for external trigger.' });
 
+        // Lazy-load scan logic to prevent circular route dependencies
+        const { runFullScan } = require('./scanRoutes');
+
         // Normalize scan type
         const type = scanType || 'quick';
         const tests = type === 'full' 
@@ -40,6 +43,7 @@ router.post('/trigger', async (req, res) => {
             status: 'in-progress'
         });
     } catch (error) {
+        console.error('[Job Trigger 500]:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -52,6 +56,7 @@ router.get('/jobs', async (req, res) => {
         const jobs = await Job.find({ userId }).sort({ createdAt: -1 });
         res.json(jobs);
     } catch (error) {
+        console.error('[Job Fetch 500]:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -77,6 +82,7 @@ router.post('/jobs', async (req, res) => {
         await job.save();
         res.status(201).json(job);
     } catch (error) {
+        console.error('[Job Create 500]:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -89,6 +95,7 @@ router.patch('/job/:id', async (req, res) => {
         if (!job) return res.status(404).json({ error: 'Job not found' });
         res.json(job);
     } catch (error) {
+        console.error('[Job Update 500]:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -100,6 +107,27 @@ router.delete('/job/:id', async (req, res) => {
         if (!job) return res.status(404).json({ error: 'Job not found' });
         res.json({ message: 'Job deleted successfully' });
     } catch (error) {
+        console.error('[Job Delete 500]:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── MANUAL RUN (Override) ─────────────────────────────────────────────────
+router.post('/job/:id/run', async (req, res) => {
+    try {
+        const scheduler = require('../services/schedulerService');
+        const job = await Job.findById(req.params.id);
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+
+        console.log(`[Manual Trigger]: Forcing immediate execution for Job ${job._id} (${job.url})`);
+        
+        // Execute immediately
+        // Note: we don't await the actual scan, only the worker dispatch
+        scheduler.executeJob(job);
+        
+        res.json({ message: 'Manual execution protocol initiated.', jobId: job._id });
+    } catch (error) {
+        console.error('[Manual Run Error]:', error);
         res.status(500).json({ error: error.message });
     }
 });

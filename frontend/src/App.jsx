@@ -119,6 +119,8 @@ function App() {
   }, [theme]);
 
   const handleScanStarted = (reportId, chatId) => {
+    // Immediate HUD engagement to prevent latency gap
+    setScanProgress({ percent: 0, stage: 'Initializing autonomous sequence...', status: 'in-progress' });
     setLiveReportId(reportId);
     if (chatId) setActiveChatId(chatId);
     setRefreshKey(prev => prev + 1);
@@ -185,6 +187,17 @@ function App() {
           setTimeout(() => setScanProgress(null), 5000);
         }
       });
+
+      socket.on('job-sync', (data) => {
+        console.log('[Socket]: Job synchronization pulse:', data);
+        if (data.status === 'running' && data.reportId) {
+          console.log('[Socket]: Autonomous scan detected. Engaging Live HUD for:', data.reportId);
+          handleScanStarted(data.reportId);
+        }
+        
+        // Broad Refresh: Ensure all data (Lattice, History, Schedule List) are in sync
+        setRefreshKey(prev => prev + 1);
+      });
     }
 
     return () => {
@@ -217,14 +230,24 @@ function App() {
     setRefreshKey(prev => prev + 1);
   };
 
-  const handleReScan = async (url) => {
+  const handleReScan = async (url, reportId = null) => {
     try {
       const userId = localStorage.getItem('userId');
-      const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5005/api'}/scan`, {
-        url,
-        userId,
-        force: true
-      });
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5005/api';
+      
+      let response;
+      if (reportId) {
+        // Use stateful rescan protocol (preserves modules, scope, etc.)
+        response = await axios.post(`${API_URL}/report/${reportId}/rescan`);
+      } else {
+        // Fallback to simple URL rescan
+        response = await axios.post(`${API_URL}/scan`, {
+          url,
+          userId,
+          force: true
+        });
+      }
+
       if (response.data.reportId) {
         handleScanStarted(response.data.reportId);
         setViewingReportId(null);

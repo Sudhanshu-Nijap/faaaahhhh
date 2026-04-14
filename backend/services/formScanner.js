@@ -4,96 +4,131 @@
 const scanForms = async (page) => {
     return await page.evaluate(() => {
         const issues = [];
+        const seenIssues = new Set(); // For deduplication
         
-        // 1. Audit Semantic Forms
-        const forms = Array.from(document.querySelectorAll('form'));
-        forms.forEach((form, index) => {
-            const buttons = Array.from(form.querySelectorAll('button, input[type="submit"]'));
-            
-            // UX Check: Submit Button
-            if (buttons.length === 0) {
-                issues.push({
-                    form: form.id || `Form #${index + 1}`,
-                    type: 'UX_DEVIATION',
-                    severity: 'Medium',
-                    message: 'Form has no visible submit button.',
-                    recommendation: 'Ensure every form has a clear, accessible submit button.'
-                });
-            }
-
-            // Logic Check: Empty Action
-            if (!form.getAttribute('action') && !form.getAttribute('onsubmit')) {
-                issues.push({
-                    form: form.id || `Form #${index + 1}`,
-                    type: 'LOGIC_GAP',
-                    severity: 'Low',
-                    message: 'Form has no standard action or obvious submission handler.',
-                    recommendation: 'Verify if the form is handled via modern SPA frameworks; otherwise, add a submission target.'
-                });
-            }
-        });
-
-        // 2. Global Input Audit (Covers loose inputs in SPAs)
-        const allInputs = Array.from(document.querySelectorAll('input, select, textarea'));
-        allInputs.forEach(input => {
-            // Accessibility Check: Labels
-            const id = input.getAttribute('id');
-            const ariaLabel = input.getAttribute('aria-label');
-            const label = id ? document.querySelector(`label[for="${id}"]`) : null;
-            const parentLabel = input.closest('label');
-
-            if (!label && !ariaLabel && !parentLabel) {
-                issues.push({
-                    form: input.closest('form')?.id || 'Global Context',
-                    type: 'ACCESSIBILITY',
-                    field: input.name || input.id || input.placeholder || 'anonymous input',
-                    severity: 'High',
-                    message: 'Input field is missing a descriptive label or aria-label.',
-                    recommendation: 'Add a <label> with "for" attribute or an "aria-label" to this field.'
-                });
-            }
-
-            // Validation Check: Missing Required Constraints
-            const type = input.getAttribute('type') || 'text';
-            if (['text', 'email', 'password'].includes(type) && !input.hasAttribute('required') && !input.hasAttribute('pattern')) {
-                // Only warn if it's likely a critical entry field
-                if (input.name?.toLowerCase().includes('user') || input.name?.toLowerCase().includes('pass') || input.name?.toLowerCase().includes('mail')) {
-                    issues.push({
-                        form: input.closest('form')?.id || 'Global Context',
-                        type: 'VALIDATION',
-                        field: input.name || input.id,
-                        severity: 'Low',
-                        message: 'No client-side validation constraints detected on critical field.',
-                        recommendation: 'Add the "required" attribute or HTML5 validation regex.'
-                    });
+        const getSpatialContext = (el) => {
+            try {
+                let current = el.parentElement;
+                while (current && current !== document.body) {
+                    const heading = current.querySelector('h1, h2, h3, h4, h5, h6');
+                    if (heading && heading.innerText?.trim()) return heading.innerText.trim();
+                    current = current.parentElement;
                 }
-            }
-        });
+                return 'Main Content';
+            } catch { return 'Global'; }
+        };
 
-        // 3. Fake Button Detection (Div/Span used as button without role)
-        const possibleButtons = Array.from(document.querySelectorAll('div, span, a')).filter(el => {
-            const style = window.getComputedStyle(el);
-            const isClickable = style.cursor === 'pointer';
-            const hasButtonClasses = el.className.toLowerCase().includes('btn') || el.className.toLowerCase().includes('button');
-            return isClickable && hasButtonClasses;
-        });
+        const forms = Array.from(document.querySelectorAll('form'));
+        
+        // 1. Audit formal <form> structures
+        forms.forEach((form, index) => {
+            // Visibility Filter: Ignore background/tracking forms
+            if (form.offsetParent === null) return;
 
-        possibleButtons.forEach(el => {
-            const role = el.getAttribute('role');
-            const tabIndex = el.getAttribute('tabindex');
-            if (role !== 'button' && el.tagName !== 'A' && el.tagName !== 'BUTTON') {
-                issues.push({
-                    form: 'Visual Layer',
-                    type: 'UX_SEMANTICS',
-                    field: el.innerText?.substring(0, 20) || 'Custom Component',
-                    severity: 'Medium',
-                    message: 'Interactive element missing ARIA button role.',
-                    recommendation: 'Add role=\"button\" and tabindex=\"0\" to ensure accessibility and consistent audit telemetry.'
+            const formTitle = getSpatialContext(form);
+            const formId = form.id || form.name || `Form #${index + 1} near ${formTitle}`;
+            
+            const action = form.getAttribute('action');
+            const method = (form.getAttribute('method') || 'GET').toUpperCase();
+            const inputs = Array.from(form.querySelectorAll('input, select, textarea'));
+            
+            const addIssue = (issueObj) => {
+                const hash = `${issueObj.type}-${issueObj.issue || ''}-${issueObj.field || ''}`;
+                // Only deduplicate within the same page context if they are identical
+                if (!seenIssues.has(hash)) {
+                    issues.push({ ...issueObj, form: formId, location: formTitle });
+                    seenIssues.add(hash);
+                }
+            };
+
+            // Loophole: Sensitive Data in GET
+            const hasPassword = inputs.some(i => i.type === 'password');
+            if (hasPassword && method === 'GET') {
+                addIssue({
+                    type: 'SECURITY_LOOPHOLE',
+                    issue: 'Sensitive data transmitted via GET',
+                    severity: 'Critical',
+                    recommendation: 'Change form method to POST. GET parameters are visible in URLs and server logs.'
                 });
             }
-        });
 
-        return issues;
+            // Loophole: Insecure Submission (Mixed Content)
+            if (action && action.startsWith('http://') && window.location.protocol === 'https:') {
+                addIssue({
+                    type: 'SECURITY_WEAKNESS',
+                    issue: 'Insecure form submission (HTTP)',
+                    severity: 'High',
+                    recommendation: 'Update form action to use HTTPS to prevent credential interception.'
+                });
+            }
+
+            // Loophole: Validation Bypass
+            if (form.hasAttribute('novalidate')) {
+                addIssue({
+                    type: 'INTEGRITY_RISK',
+                    issue: 'Browser validation bypassed (novalidate)',
+                    severity: 'Medium',
+                    recommendation: 'Remove "novalidate" unless implementing custom high-fidelity JS validation.'
+                });
+            }
+
+            if (!action || action === '#' || action === '') {
+                addIssue({
+                    type: 'FORM_LOGIC',
+                    issue: 'Form missing valid action endpoint',
+                    severity: 'Medium',
+                    recommendation: 'Define a valid server-side endpoint in the action attribute.'
+                });
+            }
+
+            const hasSubmit = form.querySelector('button[type=\"submit\"], input[type=\"submit\"]');
+            if (!hasSubmit) {
+                addIssue({
+                    type: 'FORM_UX',
+                    issue: 'Form missing explicit submit trigger',
+                    severity: 'Low',
+                    recommendation: 'Add a <button type=\"submit\"> for better accessibility and predictable submission.'
+                });
+            }
+
+            // --- Per-Input Audit (Scoped to this form only) ---
+            inputs.forEach(input => {
+                if (input.type === 'hidden') return;
+                const id = input.id;
+                const name = input.name || id || 'anonymous';
+                const type = input.type;
+
+                // Accessibility: Missing Labels
+                if (id) {
+                    const label = document.querySelector(`label[for=\"${id}\"]`);
+                    if (!label && !input.getAttribute('aria-label') && !input.placeholder) {
+                        addIssue({
+                            type: 'ACCESSIBILITY',
+                            issue: `Input field \"${name}\" missing label`,
+                            severity: 'Medium',
+                            field: name,
+                            recommendation: 'Associate a <label> or add an aria-label to ensure screen reader compatibility.'
+                        });
+                    }
+                }
+
+                // Security Loophole: Unsafe Autocomplete
+                if (type === 'password' || name.toLowerCase().includes('card') || name.toLowerCase().includes('cvv')) {
+                    const auto = input.getAttribute('autocomplete');
+                    if (!auto || auto === 'on') {
+                        addIssue({
+                            type: 'SECURITY_CONFIG',
+                            issue: `Unsafe autocomplete on sensitive field \"${name}\"`,
+                            severity: 'Low',
+                            field: name,
+                            recommendation: 'Set autocomplete=\"off\" or \"new-password\" for sensitive user data.'
+                        });
+                    }
+                }
+            });
+        });
+ 
+        return issues.slice(0, 100);
     });
 };
 

@@ -9,16 +9,16 @@ const path = require('path');
  */
 const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
     const visited = new Set();
-    const queue = [{ url: baseUrl, depth: 0 }]; // Track depth per URL
+    const queue = [{ url: baseUrl, depth: 0 }];
     const internalPages = new Set();
-    const allLinks = new Set();
+    // Use a Map to track the source page for each link to provide better context
+    const linkSourceMap = new Map(); 
     const brokenLinks = [];
     
-    // Constraints
     const scope = options.scope || 'single';
     const maxPages = scope === 'site' ? (options.maxPages || 50) : 1;
     const maxDepth = scope === 'site' ? (options.maxDepth !== undefined ? options.maxDepth : 3) : 0;
-    const maxLinksToCheck = scope === 'site' ? 25 : 10;
+    const maxLinksToCheck = scope === 'site' ? 50 : 20;
     const structure = { nodes: [], links: [] };
 
     const progress = (p, s) => {
@@ -29,8 +29,6 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
     try {
         domain = new URL(baseUrl).hostname;
     } catch (_) {
-        console.error(`[Crawler]: Invalid URL: ${baseUrl}`);
-        progress(1, "Error: Invalid target URL.");
         return [baseUrl];
     }
 
@@ -40,136 +38,103 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
     try {
         browser = await chromium.launch({
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
 
         const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         });
         const page = await context.newPage();
 
-        // ─── Phase 1: Crawl internal pages ──────────────────────────────
+        // ─── Phase 1: Distributed Page Discovery ──────────────────────────────
         while (queue.length > 0 && visited.size < maxPages) {
             const { url, depth } = queue.shift();
             if (visited.has(url) || depth > maxDepth) continue;
             visited.add(url);
 
-            console.log(`[Crawler]: Visiting ${url}`);
             try {
-                const pathName = new URL(url).pathname || '/';
-                progress(7 + Math.floor((visited.size / maxPages) * 3), `Crawling: ${pathName}`);
-            } catch (e) {
-                progress(7 + Math.floor((visited.size / maxPages) * 3), `Crawling: ${url.substring(0, 20)}...`);
-            }
-            
-            try {
-                try {
-                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
-                } catch (e) {
-                    console.warn(`[Crawler]: Navigation slow for ${url}, proceeding...`);
-                }
-                
-                await page.waitForTimeout(200); // reduced further for hackathon speed
+                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
                 internalPages.add(url);
 
-
-                // ── Site Structure Mapping ──────────────────────────────────
+                // Site Structure Mapping
                 const pathName = new URL(url).pathname || '/';
-                const nodeId = url; 
-                
-                // Add node if not exists
-                const nodeExists = structure.nodes.find(n => n.id === nodeId);
-                if (!nodeExists) {
-                    structure.nodes.push({ id: nodeId, label: pathName, url, depth });
+                if (!structure.nodes.find(n => n.id === url)) {
+                    structure.nodes.push({ id: url, label: pathName, url, depth });
                 }
 
-                // Extract all links
+                // Gather links for centralized audit
                 const links = await page.evaluate(() =>
                     Array.from(document.querySelectorAll('a[href]'))
-                        .map(a => ({ href: a.href, text: a.innerText.trim() }))
-                        .filter(l => {
-                            const h = l.href;
-                            return h.startsWith('http') && 
-                                   !h.includes('#') && 
-                                   !h.includes('mailto:') && 
-                                   !h.includes('tel:') && 
-                                   !h.includes('javascript:') &&
-                                   !/\.(zip|pdf|docx|xlsx|pptx|jpg|jpeg|png|gif|mp4|mp3|wav)$/i.test(h); // Skip binaries
-                        })
+                        .map(a => a.href)
+                        .filter(h => h.startsWith('http') && !h.includes('#') && !h.includes('mailto:') && !h.includes('tel:'))
                 );
 
-                if (scope === 'site') {
-                    for (const linkGroup of links) {
-                        const link = linkGroup.href;
-                        allLinks.add(link);
-                        try {
-                            const linkUrl = new URL(link);
-                            const linkHostname = linkUrl.hostname;
-                            
-                            if (linkHostname === domain) {
-                                // Internal Link - Add to structure
-                                const targetId = link;
-                                const linkExists = structure.links.find(l => l.source === nodeId && l.target === targetId);
-                                if (!linkExists && nodeId !== targetId) {
-                                    structure.links.push({ source: nodeId, target: targetId });
-                                }
-
-                                if (!visited.has(link) && !queue.find(q => q.url === link)) {
-                                    queue.push({ url: link, depth: depth + 1 });
-                                }
-                            }
-                        } catch (_) {}
+                links.forEach(link => {
+                    if (!linkSourceMap.has(link)) {
+                        linkSourceMap.set(link, url);
                     }
-                } else {
-                    // Just gather links for breakage check even in single mode, but don't queue
-                    links.forEach(l => allLinks.add(l.href));
-                }
+                    
+                    try {
+                        const linkUrl = new URL(link);
+                        if (linkUrl.hostname === domain && scope === 'site') {
+                            if (!visited.has(link) && !queue.find(q => q.url === link)) {
+                                queue.push({ url: link, depth: depth + 1 });
+                            }
+                        }
+                    } catch (_) {}
+                });
             } catch (e) {
-                console.warn(`[Crawler]: Failed to crawl ${url}: ${e.message}`);
-                progress(7, `Warning: Failed to reach ${url.slice(0, 30)}...`);
+                console.warn(`[Crawler]: Failed to discovery links on ${url}: ${e.message}`);
             }
         }
 
         await browser.close();
         browser = null;
 
-        // ─── Phase 2: Broken Link Check with Promise.all ─────────────────
-        console.log(`[Crawler]: Checking ${Math.min(allLinks.size, maxLinksToCheck)} links for breakage...`);
-        progress(12, `Verifying ${Math.min(allLinks.size, maxLinksToCheck)} links...`);
-        const linksToCheck = [...allLinks].slice(0, maxLinksToCheck);
+        // ─── Phase 2: Bot-Tolerant Centralized Link Audit ─────────────────
+        const uniqueLinks = Array.from(linkSourceMap.keys()).slice(0, maxLinksToCheck);
+        progress(12, `Neural Tracing: Verifying ${uniqueLinks.length} unique navigation nodes...`);
 
         await Promise.allSettled(
-            linksToCheck.map(async (link, idx) => {
+            uniqueLinks.map(async (link) => {
                 try {
                     let status = 0;
+                    const config = {
+                        timeout: 5000,
+                        maxRedirects: 5,
+                        validateStatus: () => true,
+                        headers: { 
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.5'
+                        }
+                    };
+
                     try {
-                        // Try HEAD first (faster), fall back to GET
-                        const res = await axios.head(link, {
-                            timeout: 3000,
-                            maxRedirects: 3,
-                            validateStatus: () => true,
-                            headers: { 'User-Agent': 'Sentinel-QA-Bot/1.0' }
-                        });
+                        const res = await axios.head(link, config);
                         status = res.status;
-                        // Some servers reject HEAD — try GET if 405
-                        if (status === 405) {
-                            const getRes = await axios.get(link, {
-                                timeout: 8000,
-                                maxRedirects: 5,
-                                validateStatus: () => true,
-                                headers: { 'User-Agent': 'Sentinel-QA-Bot/1.0' }
-                            });
+                        if (status === 405 || status === 403 || status === 999) {
+                            const getRes = await axios.get(link, config);
                             status = getRes.status;
                         }
                     } catch (e) {
-                        status = 0; // Connection error = broken
+                        status = e.response ? e.response.status : 0;
                     }
 
-                    const isBroken = status === 0 || status === 404 || status === 410 || status >= 500;
+                    // Bot-Block Tolerance: Ignore 403, 429, and 999 for external domains 
+                    // as they represent bot filtering rather than broken links.
+                    const isExternal = new URL(link).hostname !== domain;
+                    const botBlockedCodes = [403, 429, 999];
+                    
+                    if (isExternal && botBlockedCodes.includes(status)) {
+                        return; // Assume functional but filtered
+                    }
+
+                    const isBroken = status === 0 || status === 404 || status === 410 || (status >= 500 && !isExternal);
 
                     if (isBroken) {
                         brokenLinks.push({
-                            page: baseUrl,
+                            page: linkSourceMap.get(link) || baseUrl,
                             link: link,
                             status: status,
                             recommendation:
@@ -184,21 +149,17 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
             })
         );
 
-        // ─── Persist results ──────────────────────────────────────────────
         const update = { $set: { pagesCrawled: internalPages.size, siteStructure: structure } };
         if (brokenLinks.length > 0) {
             update.$push = { brokenLinks: { $each: brokenLinks } };
-            console.log(`[Crawler]: ${brokenLinks.length} broken links found.`);
         }
 
         await ScanReport.findByIdAndUpdate(reportId, update);
-        console.log(`[Crawler]: Discovered ${internalPages.size} internal pages.`);
-        progress(15, `Crawled ${internalPages.size} pages. Launching deep scanners...`);
+        progress(15, `Audit complete. Optimized ${uniqueLinks.length} link checks.`);
         return Array.from(internalPages);
 
     } catch (error) {
         console.error(`[Crawler] Critical failure: ${error.message}`);
-        progress(15, "Crawler encountered a non-fatal error. Continuing...");
         return [baseUrl];
     } finally {
         if (browser) await browser.close();

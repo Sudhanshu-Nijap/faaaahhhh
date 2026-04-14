@@ -30,10 +30,11 @@ router.post('/scan', async (req, res) => {
     try { new URL(url); }
     catch (e) { return res.status(400).json({ error: 'Invalid URL format.' }); }
 
-    // INTEGRATION POINT: FAST URL Security Analyzer
+    // INTEGRATION POINT: FAST URL Security Analyzer (Non-Blocking Mode)
     const verdict = await analyzeURLSecurity(url);
-    if (verdict.blocked) {
-        const shortExplanation = `Security Block [${(verdict.riskLevel || 'High').toUpperCase()}] - ${verdict.reason}. ${verdict.explanation || verdict.source || ''}`;
+    if (verdict.blocked && verdict.riskLevel === 'critical') {
+        // Only block for absolute technical risks (SSRF, local exploits)
+        const shortExplanation = `Security Block [CRITICAL] - ${verdict.reason}. ${verdict.explanation || verdict.source || ''}`;
         return res.status(400).json({ error: shortExplanation });
     }
 
@@ -125,6 +126,46 @@ router.patch('/report/:id/pin', async (req, res) => {
         res.json(report);
     } catch (error) {
         console.error("Pin toggle error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── Stateful Rescan Protocol (Memory Inheritance) ────────────────────────────
+router.post('/report/:id/rescan', async (req, res) => {
+    try {
+        const oldReport = await ScanReport.findById(req.params.id);
+        if (!oldReport) return res.status(404).json({ error: 'Original neural trace not found' });
+
+        // Inherit tactical configuration from the previous report
+        const config = {
+            url: oldReport.url,
+            userId: oldReport.userId,
+            tests: oldReport.scannedModules || ['console', 'network', 'lighthouse', 'accessibility', 'links', 'ui', 'forms'],
+            scope: oldReport.mode === 'full' ? 'site' : 'single',
+            mode: oldReport.mode || 'specific',
+            force: true // CRITICAL: Skip cache to ensure fresh diagnostic
+        };
+
+        // Reuse the core startScan logic to dispatch the new audit
+        const { reportId } = await startScan(
+            config.url, 
+            config.userId, 
+            config.force, 
+            'standard', // chaosIntensity (Default)
+            config.scope === 'single', // singlePageOnly (Derive from scope)
+            config.tests, 
+            config.scope, 
+            config.mode,
+            config.chatId || null // chatId (Ensure context handoff)
+        );
+
+        res.status(202).json({ 
+            message: 'Stateful rescan protocol initiated.', 
+            reportId,
+            inheritedFrom: oldReport._id
+        });
+    } catch (error) {
+        console.error('[Rescan Route failure]:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -223,6 +264,40 @@ router.get('/report/:id/export', async (req, res) => {
         if (!pdfUrl) return res.status(404).json({ error: 'Report not found' });
         res.json({ url: pdfUrl });
     } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── Stateful Re-scan Protocol ──────────────────────────────────────────────────
+router.post('/report/:id/rescan', async (req, res) => {
+    try {
+        const oldReport = await ScanReport.findById(req.params.id);
+        if (!oldReport) return res.status(404).json({ error: 'Original report not found' });
+
+        // Clone tactical parameters from the existing baseline
+        const { url, userId, scannedModules, mode } = oldReport;
+        
+        // Determine scope: if pagesCrawled > 1, it was likely a site-wide scan
+        const scope = oldReport.pagesCrawled > 1 ? 'site' : 'single';
+        const singlePageOnly = scope === 'single';
+
+        console.log(`[Rescan]: Triggering stateful audit for ${url} (Scope: ${scope})`);
+
+        // Force a new scan using identical settings
+        const { reportId } = await startScan(
+            url, 
+            userId, 
+            true, // force
+            'standard', 
+            singlePageOnly, 
+            scannedModules, 
+            scope, 
+            mode
+        );
+
+        res.json({ message: 'Stateful re-scan initiated', reportId });
+    } catch (error) {
+        console.error('[Rescan Error]:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -351,6 +426,12 @@ async function startScan(baseUrl, userId, force = false, chaosIntensity = 'stand
             type: 'scan_started',
             reportId: report._id.toString()
         });
+        
+        // INSTANT HUD ENGAGEMENT: Trigger global progress HUD immediately for all scan types
+        global.io.to(`user_${userId.toString()}`).emit('job-sync', {
+            reportId: report._id.toString(),
+            status: 'running'
+        });
     }
 
     // Launch background processor
@@ -403,6 +484,7 @@ async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = f
         if (msg.type === 'failed') {
             if (global.io) {
                 global.io.to(reportId.toString()).emit('scan-progress', {
+                    reportId: reportId.toString(), // CRITICAL: Ensures HUD can identify failure
                     percent: 100,
                     stage: 'Scan failed: ' + msg.error,
                     status: 'failed'

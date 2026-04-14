@@ -61,7 +61,12 @@ const TrendsSection = ({ url, userId }) => {
               <TrendingUp size={16} className="text-primary" />
               <h3 className="text-[12px] font-black uppercase tracking-industrial text-white">Delta Intelligence</h3>
            </div>
-           <p className="text-[10px] font-medium text-[var(--eu-text-muted)] lowercase tracking-tighter italic">Historical health evolution for {new URL(url).hostname}</p>
+           <p className="text-[10px] font-medium text-[var(--eu-text-muted)] lowercase tracking-tighter italic">
+             Historical health evolution for {(() => {
+               try { return new URL(url).hostname; }
+               catch (e) { return url; }
+             })()}
+           </p>
         </div>
         <div className="flex items-center gap-6">
            <div className="flex flex-col text-right">
