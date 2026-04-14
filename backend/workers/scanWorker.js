@@ -120,55 +120,32 @@ async function runMasterOrchestrator(data) {
         // --- FLASH-MODE ORCHESTRATION ---
         emitProgress(5, 'Engaging Integrated Audit Core...');
         
-        // 1. Primary Technical & Structural Audit (Playwright)
-        // This phase now captures the tactical CDP port for Lighthouse handoff
-        const activeSuite = Array.isArray(tests) ? tests.filter(t => ['console', 'network', 'ui', 'links', 'forms'].includes(t)) : [];
-        let sharedCdpPort = null;
+        // 1. Integrated Discovery & Audit (Converged Engine)
+        // The engine now handles technical, visual, and compliance (Lighthouse) audits in a single resilient pass.
 
         if (scope === 'single') {
-            console.log('[MasterWorker]: Executing Unified Session Audit (Flash-Mode)...');
-            const result = await scanEngine.runSinglePageScan(reportId, baseUrl, activeSuite, (p, s) => {
-                emitProgress(5 + Math.round(p * 0.40), s);
+            console.log('[MasterWorker]: Executing Unified Session Audit (Standard Convergence)...');
+            const result = await scanEngine.runSinglePageScan(reportId, baseUrl, tests, (p, s) => {
+                emitProgress(5 + Math.round(p * 0.80), s);
             });
             
             if (result) {
-                sharedCdpPort = result.cdpPort;
+                lighthouseMetrics = result.lighthouseScores;
                 await scanEngine.persistScanData(reportId, result);
             }
         } else {
-            // Site-wide crawl uses distributed pulses
-            await scanEngine.runTargetedCrawlScan(reportId, baseUrl, activeSuite, (p, s) => {
-                emitProgress(5 + Math.round(p * 0.40), s);
+            // Site-wide crawl handles its own persistence internally
+            await scanEngine.runTargetedCrawlScan(reportId, baseUrl, tests, (p, s) => {
+                emitProgress(5 + Math.round(p * 0.80), s);
             }, scope);
+            
+            // Re-fetch to get consolidated lighthouse scores from site-wide crawl if captured
+            const consolidatedReport = await ScanReport.findById(reportId);
+            lighthouseMetrics = consolidatedReport.lighthouseScores;
         }
 
-        // 2. Parallel Secondary Pulses (Lighthouse & Insights)
+        // 2. Parallel Secondary UX Pulse (Insights)
         await Promise.all([
-            // Quality Matrix Audit (Now using Unified Session if available)
-            (async () => {
-                const runIh = tests.includes('lighthouse') || tests.includes('performance') || tests.includes('accessibility');
-                if (!runIh) return;
-
-                console.log(`[MasterWorker]: Engaging Lighthouse Pulse (SharedPort: ${sharedCdpPort || 'None'})...`);
-                const dedicatedData = await qaScanner.runDedicatedScan(baseUrl, sharedCdpPort).catch(err => {
-                    console.error(`[MasterWorker]: Dedicated Lighthouse Audit FAILED: ${err.message}`);
-                    return null;
-                });
-
-                if (dedicatedData && (dedicatedData.scores?.performance >= 0)) {
-                    console.log(`[MasterWorker]: Synchronizing tactical scores for ${baseUrl}`);
-                    lighthouseMetrics = dedicatedData.scores;
-                    if (dedicatedData.accessibilityIssues?.length > 0) {
-                        try {
-                            const ScanReport = require('../models/ScanReport');
-                            await ScanReport.findByIdAndUpdate(reportId, { 
-                                $push: { accessibilityIssues: { $each: dedicatedData.accessibilityIssues } } 
-                            });
-                        } catch (e) { console.error('[MasterWorker]: Failed to push early accessibility telemetry:', e.message); }
-                    }
-                }
-                emitProgress(85, 'Quality Matrix pulse synchronization complete.');
-            })(),
 
             // 3. Early AI Insight Dispatch
             (async () => {

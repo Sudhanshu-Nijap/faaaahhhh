@@ -268,40 +268,6 @@ router.get('/report/:id/export', async (req, res) => {
     }
 });
 
-// ── Stateful Re-scan Protocol ──────────────────────────────────────────────────
-router.post('/report/:id/rescan', async (req, res) => {
-    try {
-        const oldReport = await ScanReport.findById(req.params.id);
-        if (!oldReport) return res.status(404).json({ error: 'Original report not found' });
-
-        // Clone tactical parameters from the existing baseline
-        const { url, userId, scannedModules, mode } = oldReport;
-        
-        // Determine scope: if pagesCrawled > 1, it was likely a site-wide scan
-        const scope = oldReport.pagesCrawled > 1 ? 'site' : 'single';
-        const singlePageOnly = scope === 'single';
-
-        console.log(`[Rescan]: Triggering stateful audit for ${url} (Scope: ${scope})`);
-
-        // Force a new scan using identical settings
-        const { reportId } = await startScan(
-            url, 
-            userId, 
-            true, // force
-            'standard', 
-            singlePageOnly, 
-            scannedModules, 
-            scope, 
-            mode
-        );
-
-        res.json({ message: 'Stateful re-scan initiated', reportId });
-    } catch (error) {
-        console.error('[Rescan Error]:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
 // ── Stop an active scan ───────────────────────────────────────────────────────
 router.post('/stop', async (req, res) => {
     try {
