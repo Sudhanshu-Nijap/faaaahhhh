@@ -36,14 +36,45 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
 
     let browser;
     try {
+        const port = 9222 + Math.floor(Math.random() * 100);
         browser = await chromium.launch({
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            args: [
+                `--remote-debugging-port=${port}`,
+                '--no-sandbox', 
+                '--disable-setuid-sandbox',
+                '--disable-blink-features=AutomationControlled'
+            ]
         });
 
         const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            viewport: { width: 1440, height: 900 },
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            extraHTTPHeaders: {
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Sec-CH-UA': '"Not A(Brand";v="99", "Google Chrome";v="122", "Chromium";v="122"',
+                'Sec-CH-UA-Mobile': '?0',
+                'Sec-CH-UA-Platform': '"Windows"',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1'
+            }
         });
+
+        // --- FLASH-MODE: Resource Shield (V3) ---
+        await context.route('**/*', (route) => {
+            const url = route.request().url();
+            const blockedDomains = [
+                'google-analytics.com', 'googletagmanager.com', 'facebook.com', 
+                'connect.facebook.net', 'ads-twitter.com', 'doubleclick.net', 
+                'adnxs.com', 'hotjar.com'
+            ];
+            if (blockedDomains.some(d => url.includes(d))) return route.abort();
+            route.continue();
+        });
+
         const page = await context.newPage();
 
         // ─── Phase 1: Distributed Page Discovery ──────────────────────────────
@@ -53,8 +84,15 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
             visited.add(url);
 
             try {
-                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+                // Adaptive SPA Wait: Use 'load' and increased timeout for Vercel/Next.js hydration
+                await page.goto(url, { waitUntil: 'load', timeout: 25000 });
+                
+                // --- Hydration Cooldown (V1) ---
+                // Wait for SPA dynamic link generation
+                await page.waitForTimeout(1500);
+                
                 internalPages.add(url);
+                progress(10, `Hydration Stabilized: Scanned ${new URL(url).pathname}`);
 
                 // Site Structure Mapping
                 const pathName = new URL(url).pathname || '/';
@@ -91,24 +129,28 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
         await browser.close();
         browser = null;
 
-        // ─── Phase 2: Bot-Tolerant Centralized Link Audit ─────────────────
+        // ─── Phase 2: Bot-Tolerant Centralized Link Audit (Warp-Drive) ─
+        const maxLinksToCheck = scope === 'site' ? 30 : 15; // Optimized for Speed
         const uniqueLinks = Array.from(linkSourceMap.keys()).slice(0, maxLinksToCheck);
-        progress(12, `Neural Tracing: Verifying ${uniqueLinks.length} unique navigation nodes...`);
+        progress(12, `Neural Tracing: Verifying ${uniqueLinks.length} navigation nodes...`);
 
-        await Promise.allSettled(
-            uniqueLinks.map(async (link) => {
-                try {
-                    let status = 0;
-                    const config = {
-                        timeout: 5000,
-                        maxRedirects: 5,
-                        validateStatus: () => true,
-                        headers: { 
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                            'Accept-Language': 'en-US,en;q=0.5'
-                        }
-                    };
+        const linkBatchSize = 10; // Concurrency for link checks
+        for (let i = 0; i < uniqueLinks.length; i += linkBatchSize) {
+            const batch = uniqueLinks.slice(i, i + linkBatchSize);
+            await Promise.allSettled(
+                batch.map(async (link) => {
+                    try {
+                        let status = 0;
+                        const config = {
+                            timeout: 4000,
+                            maxRedirects: 3,
+                            validateStatus: () => true,
+                            headers: { 
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                                'Accept-Language': 'en-US,en;q=0.5'
+                            }
+                        };
 
                     try {
                         const res = await axios.head(link, config);
@@ -148,6 +190,7 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
                 } catch (_) {}
             })
         );
+    }
 
         const update = { $set: { pagesCrawled: internalPages.size, siteStructure: structure } };
         if (brokenLinks.length > 0) {

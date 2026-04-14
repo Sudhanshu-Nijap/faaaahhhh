@@ -2,48 +2,55 @@
 /**
  * runDedicatedScan - Ultimate fallback using a fresh browser instance
  */
-async function runDedicatedScan(url) {
+async function runDedicatedScan(url, existingPort = null) {
     let chrome;
     try {
         const lighthouse = (await import('lighthouse')).default;
         const chromeLauncher = await import('chrome-launcher');
         const { chromium } = require('playwright');
         
-        console.log(`[qaScanner]: Launching Dedicated Lighthouse Session for ${url}...`);
+        console.log(`[qaScanner]: Initiating tactical pulse for ${url}...`);
 
-        let chromePath;
-        try {
-            chromePath = chromium.executablePath();
-            console.log(`[qaScanner]: Bound to Playwright Chromium: ${chromePath}`);
-        } catch (e) {
-            console.warn('[qaScanner]: Could not determine Playwright Chromium path, letting chrome-launcher decide.');
+        let port;
+        if (existingPort) {
+            console.log(`[qaScanner]: Attaching to existing tactical port ${existingPort} (Flash-Mode Active).`);
+            port = existingPort;
+        } else {
+            console.log(`[qaScanner]: Launching dedicated Chromium pulse...`);
+            let chromePath;
+            try {
+                chromePath = chromium.executablePath();
+                console.log(`[qaScanner]: Bound to Playwright Chromium: ${chromePath}`);
+            } catch (e) {
+                console.warn('[qaScanner]: Could not determine Playwright Chromium path, letting chrome-launcher decide.');
+            }
+
+            chrome = await chromeLauncher.launch({ 
+                chromePath: chromePath, 
+                startingPort: 9300, 
+                chromeFlags: [
+                    '--headless=new', // Modern headless mode for better WAF evasion
+                    '--no-sandbox', 
+                    '--disable-gpu',
+                    '--disable-web-security',
+                    '--ignore-certificate-errors',
+                    '--remote-allow-origins=*',
+                    '--disable-blink-features=AutomationControlled',
+                    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                ] 
+            });
+            port = chrome.port;
+            console.log(`[qaScanner]: Pulse Port Active: ${port}. Adaptive Stabilization (2.5s)...`);
+            await new Promise(res => setTimeout(res, 2500));
         }
 
-        chrome = await chromeLauncher.launch({ 
-            chromePath: chromePath, 
-            chromeFlags: [
-                '--headless=new', // Modern headless mode for better WAF evasion
-                '--no-sandbox', 
-                '--disable-gpu',
-                '--disable-web-security',
-                '--ignore-certificate-errors',
-                '--remote-allow-origins=*',
-                '--disable-blink-features=AutomationControlled',
-                '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-            ] 
-        });
-        
-        console.log(`[qaScanner]: Pulse Port Active: ${chrome.port}. Adaptive Stabilization (1.5s)...`);
-        await new Promise(res => setTimeout(res, 1500));
-
         const result = await lighthouse(url, {
-            port: chrome.port,
+            port: port,
             output: 'json',
             logLevel: 'silent', 
             onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
             settings: {
                 throttlingMethod: 'simulate',
-                // Desktop Profile Optimization
                 throttling: {
                     rttMs: 40,
                     throughputKbps: 10240,
@@ -55,14 +62,20 @@ async function runDedicatedScan(url) {
                 skipAudits: ['screenshot-thumbnails', 'final-screenshot', 'full-page-screenshot'], // Speed: Skip heavy assets
                 screenEmulation: {
                     mobile: false,
-                    width: 1350,
-                    height: 940,
+                    width: 1440,
+                    height: 900,
                     deviceScaleFactor: 1,
                     disabled: false,
                 },
                 extraHeaders: {
                     'Accept-Language': 'en-US,en;q=0.9',
-                    'sec-ch-ua': '"Not A(Brand";v="99", "Google Chrome";v="122", "Chromium";v="122"'
+                    'Sec-CH-UA': '"Not A(Brand";v="99", "Google Chrome";v="122", "Chromium";v="122"',
+                    'Sec-CH-UA-Mobile': '?0',
+                    'Sec-CH-UA-Platform': '"Windows"',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1'
                 }
             }
         });

@@ -714,6 +714,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
                       </div>
                     </div>
 
+                    <div className="space-y-8">
                     {/* Issue Cards */}
                     {report.aiInsights.issues?.length > 0 ? (
                       <div className="space-y-8">
@@ -796,6 +797,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
                         </div>
                       </div>
                     )}
+                  </div>
 
                     <div className="flex gap-12 pt-10 border-t border-white/5 mt-12">
                       <div className="flex flex-col gap-2">

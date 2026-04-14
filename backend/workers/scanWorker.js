@@ -117,39 +117,40 @@ async function runMasterOrchestrator(data) {
             if (parentPort) parentPort.postMessage({ type: 'progress', percent, stage });
         };
 
-        // --- PRIMARY PARALLEL AUDIT ---
+        // --- FLASH-MODE ORCHESTRATION ---
         emitProgress(5, 'Engaging Integrated Audit Core...');
         
-        await Promise.all([
-            // 1. Primary Technical & Structural Audit (Playwright)
-            (async () => {
-                const activeSuite = Array.isArray(tests) ? tests.filter(t => ['console', 'network', 'ui', 'links', 'forms'].includes(t)) : [];
-                if (scope === 'single') {
-                    // Integration scan handles 5% to 45%
-                    const result = await scanEngine.runSinglePageScan(reportId, baseUrl, activeSuite, (p, s) => {
-                        const scaled = 5 + Math.round(p * 0.40);
-                        emitProgress(scaled, s);
-                    });
-                    if (result) {
-                        await scanEngine.persistScanData(reportId, result);
-                    }
-                } else {
-                    await scanEngine.runTargetedCrawlScan(reportId, baseUrl, activeSuite, (p, s) => {
-                        const scaled = 5 + Math.round(p * 0.40);
-                        emitProgress(scaled, s);
-                    }, scope);
-                }
-                console.log('[MasterWorker]: Technical Audit Core phase finalized.');
-            })(),
+        // 1. Primary Technical & Structural Audit (Playwright)
+        // This phase now captures the tactical CDP port for Lighthouse handoff
+        const activeSuite = Array.isArray(tests) ? tests.filter(t => ['console', 'network', 'ui', 'links', 'forms'].includes(t)) : [];
+        let sharedCdpPort = null;
 
-            // 2. Quality Matrix Audit (Lighthouse Dedicated Pulse)
+        if (scope === 'single') {
+            console.log('[MasterWorker]: Executing Unified Session Audit (Flash-Mode)...');
+            const result = await scanEngine.runSinglePageScan(reportId, baseUrl, activeSuite, (p, s) => {
+                emitProgress(5 + Math.round(p * 0.40), s);
+            });
+            
+            if (result) {
+                sharedCdpPort = result.cdpPort;
+                await scanEngine.persistScanData(reportId, result);
+            }
+        } else {
+            // Site-wide crawl uses distributed pulses
+            await scanEngine.runTargetedCrawlScan(reportId, baseUrl, activeSuite, (p, s) => {
+                emitProgress(5 + Math.round(p * 0.40), s);
+            }, scope);
+        }
+
+        // 2. Parallel Secondary Pulses (Lighthouse & Insights)
+        await Promise.all([
+            // Quality Matrix Audit (Now using Unified Session if available)
             (async () => {
                 const runIh = tests.includes('lighthouse') || tests.includes('performance') || tests.includes('accessibility');
                 if (!runIh) return;
 
-                console.log('[MasterWorker]: Engaging Lighthouse Multi-Threaded Pulse...');
-                // Lighthouse handles 45% to 85%
-                const dedicatedData = await qaScanner.runDedicatedScan(baseUrl).catch(err => {
+                console.log(`[MasterWorker]: Engaging Lighthouse Pulse (SharedPort: ${sharedCdpPort || 'None'})...`);
+                const dedicatedData = await qaScanner.runDedicatedScan(baseUrl, sharedCdpPort).catch(err => {
                     console.error(`[MasterWorker]: Dedicated Lighthouse Audit FAILED: ${err.message}`);
                     return null;
                 });
@@ -157,7 +158,6 @@ async function runMasterOrchestrator(data) {
                 if (dedicatedData && (dedicatedData.scores?.performance >= 0)) {
                     console.log(`[MasterWorker]: Synchronizing tactical scores for ${baseUrl}`);
                     lighthouseMetrics = dedicatedData.scores;
-                    // Pre-sync accessibility issues to the DB
                     if (dedicatedData.accessibilityIssues?.length > 0) {
                         try {
                             const ScanReport = require('../models/ScanReport');

@@ -1,20 +1,13 @@
 const mongoose = require('mongoose');
-const dotenv = require('dotenv');
 const path = require('path');
-dotenv.config({ path: path.join(__dirname, '../backend/.env') });
+require('dotenv').config({ path: path.join(__dirname, 'backend', '.env') });
 
-const ScanReport = require('../backend/models/ScanReport');
-
-async function test() {
-  try {
+async function check() {
     await mongoose.connect(process.env.MONGODB_URI);
-    console.log('Connected to DB');
-    const reports = await ScanReport.find().sort({ createdAt: -1 }).limit(5);
-    console.log('Recent Reports:', JSON.stringify(reports, null, 2));
+    const ScanReport = require('./backend/models/ScanReport');
+    const reports = await ScanReport.find().sort({ createdAt: -1 }).limit(1);
+    console.log(JSON.stringify(reports[0], null, 2));
     process.exit(0);
-  } catch (err) {
-    console.error(err);
-    process.exit(1);
-  }
 }
-test();
+
+check();

@@ -251,8 +251,35 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
         const context = await browser.newContext({
             viewport: { width: 1440, height: 900 },
             deviceScaleFactor: 2,
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            extraHTTPHeaders: {
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Sec-CH-UA': '"Not A(Brand";v="99", "Google Chrome";v="122", "Chromium";v="122"',
+                'Sec-CH-UA-Mobile': '?0',
+                'Sec-CH-UA-Platform': '"Windows"',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1'
+            }
         });
+
+        // --- FLASH-MODE: Resource Shield (V3) ---
+        await context.route('**/*', (route) => {
+            const url = route.request().url();
+            const blockedDomains = [
+                'google-analytics.com', 'googletagmanager.com', 'facebook.com', 
+                'connect.facebook.net', 'ads-twitter.com', 'doubleclick.net', 
+                'adnxs.com', 'impactradius-event.com', 'hotjar.com'
+            ];
+            
+            if (blockedDomains.some(d => url.includes(d))) {
+                return route.abort();
+            }
+            route.continue();
+        });
+
         const page = await context.newPage();
         
         // --- GHOST PROTOCOL: Stealth Fingerprinting (V6 Hardening) ---
@@ -273,7 +300,6 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
         page.on('console', msg => {
             if (msg.type() === 'error') {
                 const errorLocation = msg.location().url || '';
-                // Domain Filtering: Only report errors from the site's own domain or inline scripts
                 const isInternal = !errorLocation || errorLocation.includes(domain) || errorLocation === 'inline';
                 
                 if (isInternal) {
@@ -309,48 +335,35 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
         
         // --- Adaptive Navigation Strategy (WAF Bypass V2) ---
         const startTime = Date.now();
-        console.log(`[scanEngine]: Initializing stealth navigation pulse for ${url}...`);
+        console.log(`[scanEngine]: Initializing Ghost-Protocol Level 2 navigation for ${url}...`);
         
-        // Randomized human-like preamble to avoid instant-bot detection
-        const jitter = 500 + Math.floor(Math.random() * 1000);
+        const jitter = 800 + Math.floor(Math.random() * 1500);
         await new Promise(res => setTimeout(res, jitter));
 
         try {
-            // Speed Optimization: Use 'load' first, then a shorter stabilization window
             await page.goto(url, { waitUntil: 'load', timeout: 35000 });
-            console.log(`[scanEngine]: Uplink stable (${url}). Commencing adaptive stabilization...`);
-            
-            // Wait for visual stability (much faster than networkidle for 3rd party trackers)
+            console.log(`[scanEngine]: Uplink stable (${url}). Commencing Neural Drift...`);
             await page.waitForLoadState('domcontentloaded');
-            // Adaptive wait: 1s is usually enough after 'load' if the site isn't extremely heavy
+            await neuralDrift(page);
             await new Promise(r => setTimeout(r, 1000));
         } catch (navError) {
             console.warn(`[scanEngine]: Tactical Navigation delay: ${navError.message}. Triggering High-Resiliency Fallback...`);
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
         }
         
-        // Human-Simulated interaction: Perform a subtle scroll to trigger lazy-load assets
-        await page.mouse.wheel(0, 300);
-        await new Promise(r => setTimeout(r, 500));
-        await page.mouse.wheel(0, -300);
-        
         const loadTime = Date.now() - startTime;
-        console.log(`[scanEngine]: Page stabilized in ${loadTime}ms.`);
+        console.log(`[scanEngine]: Page stabilized through Neural Drift in ${loadTime}ms.`);
         
-        // --- 2b. Converged Telemetry Capture ---
         emitProgress(25, 'Stabilizing page & triggering dynamic assets...');
-        
-        // Trigger lazy loads
         await neuralScroll(page).catch(() => {});
         
-        // Hide common overlays (cookie banners, popups) for cleaner screenshots
         await page.evaluate(() => {
             const selectors = [
-                '[id*="cookie"]', '[class*="cookie"]', 
-                '[id*="consent"]', '[class*="consent"]',
-                '[id*="banner"]', '[class*="banner"]',
+                '[id*=\"cookie\"]', '[class*=\"cookie\"]', 
+                '[id*=\"consent\"]', '[class*=\"consent\"]',
+                '[id*=\"banner\"]', '[class*=\"banner\"]',
                 '.modal-backdrop', '.modal-open',
-                '[class*="overlay"]', '[id*="overlay"]',
+                '[class*=\"overlay\"]', '[id*=\"overlay\"]',
                 '#GdprBanner', '.cc-banner'
             ];
             selectors.forEach(s => {
@@ -364,24 +377,22 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
             });
         }).catch(() => {});
 
-        await page.waitForTimeout(1000); // Wait for animations to settle
+        await page.waitForTimeout(1000);
 
         const screenshotName = `screenshot-${Date.now()}.png`;
         const screenshotPath = path.join(__dirname, '../screenshots', screenshotName);
         
         emitProgress(30, 'Capturing high-fidelity visual context...');
-        // Accuracy Optimization: Use fullPage screenshot with moderate delay
         await page.screenshot({ 
             path: screenshotPath, 
             fullPage: true, 
             animations: 'disabled',
-            timeout: 30000 // Extended for high-fidelity captures on slower uplinks
+            timeout: 30000 
         }).catch((e) => {
             console.warn('[scanEngine]: Full-page screenshot failed, falling back to viewport:', e.message);
             return page.screenshot({ path: screenshotPath, fullPage: false, timeout: 15000 });
         });
 
-        // 2c. Interaction Audit: Forms
         let formIssues = [];
         if (scannedModules.includes('forms') || scannedModules.includes('ui')) {
             emitProgress(40, 'Auditing form interaction layers...');
@@ -390,22 +401,8 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
         }
 
         const uiIssues = scannedModules.includes('ui') ? await scanUI(page).catch(() => []) : [];
-        
-        let brokenLinks = [];
-        // Note: Broken Link Audit is now centralized in crawler.js to avoid redundant checks per page.
-        // This significantly optimizes scan speed for multi-page crawl.
-
-
-
-        // Extract updated atlas before closing browser
-        let updatedAtlas = atlas;
-        if (!isBrowserClosed) {
-            const result = await page.evaluate(() => Array.from(window.__sentinel_atlas || []));
-            updatedAtlas = new Set(result);
-        }
-
-        // Return all findings for centralized deduplication
-        return {
+        const results = {
+            url,
             consoleErrors: rawConsole,
             networkLogs: rawNetwork,
             uiIssues: uiIssues.map(u => ({ ...u, page: url })),
@@ -413,9 +410,54 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
             loadTime,
             totalSize,
             requestCount,
-            screenshot: { page: url, path: `/screenshots/${screenshotName}`, type: 'Full Audit' },
-            atlas: updatedAtlas
+            screenshot: { 
+                page: url, 
+                path: `/screenshots/${screenshotName}`, 
+                type: 'High-Fidelity Scan',
+                timestamp: new Date().toISOString()
+            },
+            accessibilityIssues: []
         };
+
+        // --- 2c. Modular Deep Diagnostic (Pulse) ---
+        if (scannedModules.includes('lighthouse')) {
+            emitProgress(70, 'Running Lighthouse deep diagnostic (Synthetic Pulse)...');
+            
+            // --- SELF-HEALING PULSE PROTOCOL (V2) ---
+            let lhResult = null;
+            let attempts = 0;
+            const maxAttempts = 2;
+
+            while (attempts < maxAttempts) {
+                try {
+                    lhResult = await (require('./qaScanner').runDedicatedScan(url));
+                    if (lhResult && lhResult.scores?.performance > 0) break;
+                    throw new Error('Incomplete telemetry captured');
+                } catch (lhErr) {
+                    attempts++;
+                    console.warn(`[scanEngine]: Lighthouse attempt ${attempts} failed: ${lhErr.message}`);
+                    if (attempts < maxAttempts) {
+                        emitProgress(72, `Pulse failure. Triggering Neural Reset (Attempt ${attempts + 1})...`);
+                        await new Promise(r => setTimeout(r, 2500)); 
+                    }
+                }
+            }
+
+            if (lhResult) {
+                results.lighthouseScores = lhResult.scores;
+                results.accessibilityIssues.push(...lhResult.accessibilityIssues);
+            }
+        }
+
+        let updatedAtlas = atlas;
+        if (!isBrowserClosed) {
+            const atlasData = await page.evaluate(() => Array.from(window.__sentinel_atlas || []));
+            updatedAtlas = new Set(atlasData);
+        }
+
+        results.atlas = updatedAtlas;
+        results.cdpPort = port;
+        return results;
 
     } catch (criticalError) {
         console.error(`[scanEngine CRITICAL]: Neural Audit Gated: ${criticalError.message}`);
@@ -441,61 +483,78 @@ const runTargetedCrawlScan = async (reportId, url, tests, emitProgress, scope = 
         maxDepth: scope === 'site' ? 2 : 0 
     });
     
-    const auditLimit = 10;
+    const auditLimit = 15;
     const pagesToAudit = pages.slice(0, auditLimit);
     let sessionAtlas = new Set();
     
-    // Aggregate storage for site-wide results
     const siteLogs = {
         consoleErrors: [],
         networkLogs: [],
         uiIssues: [],
         formIssues: [],
         screenshots: [],
+        accessibilityIssues: [],
+        lighthouseScores: null,
         metrics: { totalSize: 0, loadTime: 0, requestCount: 0 }
     };
 
     if (pagesToAudit.length > 0) {
-        for (let i = 0; i < pagesToAudit.length; i++) {
-            const pageUrl = pagesToAudit[i];
-            const onPageProgress = (percent, message) => {
-                const totalProgress = Math.round(((i / pagesToAudit.length) * 100) + (percent / pagesToAudit.length));
-                emitProgress(totalProgress, `Audit [${i+1}/${pagesToAudit.length}]: ${message}`);
-            };
+        const batchSize = 3; 
+        for (let i = 0; i < pagesToAudit.length; i += batchSize) {
+            const batch = pagesToAudit.slice(i, i + batchSize);
+            
+            await Promise.all(batch.map(async (pageUrl, batchIdx) => {
+                const globalIdx = i + batchIdx;
+                
+                // --- NEURAL STAGGERING (V2) ---
+                await new Promise(r => setTimeout(r, batchIdx * 600));
+                
+                const isMainPage = normalizeUrl(pageUrl) === normalizeUrl(url);
+                const activeTests = isMainPage ? tests : tests.filter(t => t !== 'lighthouse');
+                
+                const onPageProgress = (percent, message) => {
+                    const totalProgress = Math.round(((globalIdx / pagesToAudit.length) * 100) + (percent / pagesToAudit.length));
+                    emitProgress(totalProgress, `[Warp-Drive] Node ${globalIdx+1}/${pagesToAudit.length}: ${message}`);
+                };
 
-            const result = await runSinglePageScan(reportId, pageUrl, tests, onPageProgress, sessionAtlas).catch(err => {
-                console.error(`[scanEngine]: Targeted page scan failed for ${pageUrl}: ${err.message}`);
-                return null;
-            });
+                const result = await runSinglePageScan(reportId, pageUrl, activeTests, onPageProgress, sessionAtlas).catch(err => {
+                    console.error(`[scanEngine]: Warp-Drive Node Failure (${pageUrl}): ${err.message}`);
+                    return null;
+                });
 
-            if (result) {
-                // Aggregate and deduplicate
-                siteLogs.consoleErrors.push(...result.consoleErrors);
-                siteLogs.networkLogs.push(...result.networkLogs);
-                siteLogs.uiIssues.push(...result.uiIssues);
-                siteLogs.formIssues.push(...result.formIssues);
-                siteLogs.screenshots.push(result.screenshot);
-                siteLogs.metrics.totalSize += result.totalSize;
-                siteLogs.metrics.loadTime = Math.max(siteLogs.metrics.loadTime, result.loadTime);
-                siteLogs.metrics.requestCount += result.requestCount;
-                sessionAtlas = result.atlas;
-            }
+                if (result) {
+                    siteLogs.consoleErrors.push(...result.consoleErrors);
+                    siteLogs.networkLogs.push(...result.networkLogs);
+                    siteLogs.uiIssues.push(...result.uiIssues);
+                    siteLogs.formIssues.push(...result.formIssues);
+                    siteLogs.screenshots.push(result.screenshot);
+                    siteLogs.metrics.totalSize += result.totalSize;
+                    siteLogs.metrics.loadTime = Math.max(siteLogs.metrics.loadTime, result.loadTime);
+                    siteLogs.metrics.requestCount += result.requestCount;
+                    
+                    if (result.lighthouseScores) {
+                        siteLogs.lighthouseScores = result.lighthouseScores;
+                        siteLogs.accessibilityIssues.push(...result.accessibilityIssues);
+                    }
+                }
+            }));
         }
 
-        // Prepare for centralized persistence
         const siteResults = {
             consoleErrors: siteLogs.consoleErrors,
             uiIssues: siteLogs.uiIssues,
             formIssues: siteLogs.formIssues,
             networkLogs: siteLogs.networkLogs,
             screenshots: siteLogs.screenshots,
+            lighthouseScores: siteLogs.lighthouseScores,
+            accessibilityIssues: siteLogs.accessibilityIssues,
             loadTime: siteLogs.metrics.loadTime,
             totalSize: siteLogs.metrics.totalSize,
             requestCount: siteLogs.metrics.requestCount
         };
 
         await persistScanData(reportId, siteResults);
-        console.log('[scanEngine]: Site-wide deduped report generated.');
+        console.log('[scanEngine]: Multi-threaded Warp-Drive report generated.');
     }
 };
 
@@ -505,7 +564,6 @@ const runTargetedCrawlScan = async (reportId, url, tests, emitProgress, scope = 
 const persistScanData = async (reportId, results) => {
     console.log(`[scanEngine]: Persisting tactical telemetry for report ${reportId}...`);
     
-    // Neural Pruning Pass (Zero-Deduplication)
     const prune = (arr, fingerprint) => {
         const seen = new Set();
         return (arr || []).filter(item => {
@@ -525,6 +583,8 @@ const persistScanData = async (reportId, results) => {
             consoleErrors: finalConsole.slice(0, 100),
             uiIssues: finalUI.slice(0, 100),
             formIssues: finalForms.slice(0, 100),
+            accessibilityIssues: (results.accessibilityIssues || []).slice(0, 100),
+            lighthouseScores: results.lighthouseScores,
             networkLogs: (results.networkLogs || []).slice(0, 200),
             screenshots: results.screenshots || (results.screenshot ? [results.screenshot] : []),
             'performanceMetrics.loadTime': results.loadTime,
@@ -557,35 +617,78 @@ const crawlPages = async (url, options = {}) => {
 };
 
 /**
+ * neuralDrift - Simulates human mechanical interaction to bypass bot-detection challenges.
+ */
+async function neuralDrift(page) {
+    try {
+        const { width, height } = page.viewportSize();
+        for (let i = 0; i < 3; i++) {
+            const x = Math.floor(Math.random() * width);
+            const y = Math.floor(Math.random() * height);
+            await page.mouse.move(x, y, { steps: 15 });
+            await new Promise(r => setTimeout(r, 100 + Math.random() * 200));
+        }
+        await page.mouse.wheel(0, 400 + Math.floor(Math.random() * 200));
+        await new Promise(r => setTimeout(r, 400));
+        await page.mouse.wheel(0, -(200 + Math.floor(Math.random() * 100)));
+    } catch (e) {
+        console.warn('[scanEngine]: Neural Drift encountered non-critical turbulence:', e.message);
+    }
+}
+
+/**
  * applyStealthPatches - Hardens the browser context against WAF/Bot detection.
- * Spoofs hardware concurrency, WebGL vendor, and various browser signatures.
  */
 async function applyStealthPatches(page) {
-    await page.addInitScript(() => {
-        // 1. Spoof WebGL Vendor/Renderer (Common WAF Signal)
+    const memOptions = [4, 8];
+    const cpuOptions = [4, 8, 12];
+    const pickedMem = memOptions[Math.floor(Math.random() * memOptions.length)];
+    const pickedCpu = cpuOptions[Math.floor(Math.random() * cpuOptions.length)];
+
+    await page.addInitScript(({ memory, cpu }) => {
         const getParameter = WebGLRenderingContext.prototype.getParameter;
         WebGLRenderingContext.prototype.getParameter = function(parameter) {
-            if (parameter === 37445) return 'Intel Inc.'; // UNMASKED_VENDOR_WEBGL
-            if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics (0x9A49)'; // UNMASKED_RENDERER_WEBGL
+            if (parameter === 37445) return 'Intel Inc.'; 
+            if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics (0x9A49)'; 
             return getParameter.apply(this, arguments);
         };
-
-        // 2. Hide Webdriver Presence
         Object.defineProperty(navigator, 'webdriver', { get: () => false });
-
-        // 3. Spoof Plugins & Hardware
-        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        Object.defineProperty(navigator, 'deviceMemory', { get: () => memory });
+        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => cpu });
+        Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0 });
+        Object.defineProperty(navigator, 'pdfViewerEnabled', { get: () => true });
         Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-
-        // 4. Permission State masking
+        Object.defineProperty(navigator, 'plugins', { 
+            get: () => ({
+                length: 3,
+                0: { name: 'PDF Viewer' },
+                1: { name: 'Chrome PDF Viewer' },
+                2: { name: 'Chromium PDF Viewer' },
+                item: (i) => this[i],
+                namedItem: (n) => this[0]
+            }) 
+        });
         const originalQuery = window.navigator.permissions.query;
         window.navigator.permissions.query = (parameters) => (
             parameters.name === 'notifications' ?
                 Promise.resolve({ state: Notification.permission }) :
                 originalQuery(parameters)
         );
-    });
+    }, { memory: pickedMem, cpu: pickedCpu });
+}
+
+/**
+ * normalizeUrl - Ensures consistent URL comparison for target identification.
+ */
+function normalizeUrl(url) {
+    try {
+        const u = new URL(url);
+        let path = u.pathname.replace(/\/+$/, '');
+        if (path === '') path = '/';
+        return `${u.protocol}//${u.hostname}${path}`;
+    } catch (_) {
+        return url;
+    }
 }
 
 module.exports = {
