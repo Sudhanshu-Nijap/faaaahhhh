@@ -31,6 +31,24 @@ async function analyzeURLSecurity(urlString) {
             return blockVerdict;
         }
 
+        // --- BRAND SHIELD: Typo-Squatting Detection (V2) ---
+        const PREMIUM_BRANDS = ['google.com', 'paypal.com', 'microsoft.com', 'facebook.com', 'apple.com', 'amazon.com', 'github.com', 'gmail.com', 'netflix.com'];
+        const subbedHostname = hostname.replace(/0/g, 'o').replace(/1/g, 'l').replace(/vv/g, 'w').replace(/rn/g, 'm').replace(/q/g, 'g').replace(/5/g, 's');
+        
+        if (hostname !== subbedHostname) {
+            const matchesBrand = PREMIUM_BRANDS.some(brand => subbedHostname === brand || subbedHostname.endsWith('.' + brand));
+            if (matchesBrand && !PREMIUM_BRANDS.includes(hostname)) {
+                const blockVerdict = { 
+                    blocked: true, 
+                    riskLevel: 'high', 
+                    reason: "Typo-squatted brand mimicry", 
+                    explanation: `Suspected homoglyph attack detected (${hostname} visually mimics a high-value brand).` 
+                };
+                cache.set(normalizedUrl, { timestamp: Date.now(), verdict: blockVerdict });
+                return blockVerdict;
+            }
+        }
+
         // 3. Lightweight Heuristic Analysis
         const suspiciousKeywords = ["login", "verify", "secure", "account", "update", "bank", "payment", "billing", "invoice", "wallet"];
         const lowerUrl = urlString.toLowerCase();
@@ -49,7 +67,6 @@ async function analyzeURLSecurity(urlString) {
         }
 
         if (heuristicScore >= 0.7) {
-            // Highly suspicious heuristics alone
             const blockVerdict = {
                 blocked: true,
                 riskLevel: "high",
@@ -73,7 +90,7 @@ async function analyzeURLSecurity(urlString) {
                     threatEntryTypes: ["URL"],
                     threatEntries: [{ url: normalizedUrl }]
                 }
-            }, { timeout: 2000 }); // strict 2s timeout
+            }, { timeout: 2000 });
 
             if (sbResponse.data && sbResponse.data.matches && sbResponse.data.matches.length > 0) {
                 const blockVerdict = {
@@ -87,18 +104,23 @@ async function analyzeURLSecurity(urlString) {
             }
         } catch (sbError) {
             console.error("[URL Security Analyzer]: Google SB Error:", sbError.message);
-            // Fail gracefully
         }
 
-        // 4. AI Risk Classification via Groq
+        // 4. AI Risk Classification via Groq (Enhanced Prompt)
         try {
             const groqApiKey = process.env.GROQ_API_KEY;
             if (groqApiKey) {
                 const groq = new Groq({ apiKey: groqApiKey });
                 const aiResponse = await groq.chat.completions.create({
                     messages: [
-                        { role: 'system', content: 'You are a strict cybersecurity URL analyzer. Flag URLs as "high" risk if they request payments or logins over unencrypted HTTP, or appear to be phishing variants.' },
-                        { role: 'user', content: `Analyze this URL and classify if it is phishing, malware, or suspicious. Return strict JSON with risk level (low, medium, high) and reason.\n\nURL: ${normalizedUrl}` }
+                        { 
+                            role: 'system', 
+                            content: `You are a strict cybersecurity URL analyzer. Flag URLs as "high" risk if:
+                            1. They request payments or logins over unencrypted HTTP.
+                            2. They appear to be typosquatted variants of popular brands (e.g., g00gle.com, paypa1.com).
+                            3. They use homoglyphs (character substitutions) to deceive users.` 
+                        },
+                        { role: 'user', content: `Analyze this URL: ${normalizedUrl}. Is it phishing, malware, or brand mimicry? Return JSON with risk_level (low, medium, high) and reason.` }
                     ],
                     model: process.env.GROQ_AI_DEBUGGER_MODEL || 'llama-3.3-70b-versatile',
                     response_format: { type: "json_object" }
@@ -111,7 +133,7 @@ async function analyzeURLSecurity(urlString) {
                     const blockVerdict = {
                         blocked: true,
                         riskLevel: "high",
-                        reason: aiResult.reason || "AI detected high risk",
+                        reason: aiResult.reason || "AI detected high risk/mimicry",
                         source: "Groq AI"
                     };
                     cache.set(normalizedUrl, { timestamp: Date.now(), verdict: blockVerdict });
@@ -128,7 +150,6 @@ async function analyzeURLSecurity(urlString) {
             }
         } catch (aiError) {
             console.error("[URL Security Analyzer]: Groq AI Error:", aiError.message);
-            // Fail gracefully
         }
 
         // Default allow
