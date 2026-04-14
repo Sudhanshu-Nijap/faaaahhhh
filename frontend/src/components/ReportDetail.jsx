@@ -6,10 +6,9 @@ import {
   FormInput, Image, Zap, Smartphone, UserCheck, Loader2,
   CheckCircle2, Info, AlertCircle, BarChart3, Database, Shield, Cpu, Bot,
   Wifi, Trash2, Skull, Code, Copy, Check, Plus, Github as GitHubIcon,
-  Activity, Globe
+  Activity, Globe, Sparkles, X
 } from 'lucide-react';
 import axios from 'axios';
-import NeuralMap from './NeuralMap';
 
 const StatCard = ({ label, value, color, icon }) => (
   <div className="glass-euphoria p-4 rounded-2xl border-[var(--eu-glass-border)] relative overflow-hidden group">
@@ -91,14 +90,40 @@ const getTabData = (report, tab) => {
 
 const getTableColumns = (tab) => {
   switch (tab) {
-    case 'network': return ['Method', 'Status', 'Time', 'Url'];
+    case 'network': return ['Page', 'Method', 'Status', 'Time', 'Url'];
     case 'links': return ['Page', 'Link', 'Status'];
     case 'console': return ['Page', 'Message', 'Type'];
     case 'layout': return ['Page', 'Device', 'Issue', 'Selector'];
     case 'accessibility': return ['Page', 'Issue', 'Severity', 'Element'];
-    case 'forms': return ['Form', 'Type', 'Field', 'Severity', 'Message'];
+    case 'forms': return ['Page', 'Form', 'Type', 'Field', 'Severity', 'Message'];
     default: return [];
   }
+};
+
+const getAllIssuesForPage = (report, pageUrl) => {
+  const issues = [];
+  
+  (report.consoleErrors || []).forEach(e => {
+    if (e.page === pageUrl) issues.push({ ...e, _source: 'CONSOLE', _color: 'text-primary' });
+  });
+  
+  (report.networkLogs || []).forEach(e => {
+    if (e.page === pageUrl) issues.push({ ...e, _source: 'NETWORK', _color: 'text-eu-accent' });
+  });
+
+  (report.uiIssues || []).forEach(e => {
+    if (e.page === pageUrl) issues.push({ ...e, _source: 'UI/UX', _color: 'text-yellow-400' });
+  });
+
+  (report.formIssues || []).forEach(e => {
+    if (e.page === pageUrl) issues.push({ ...e, _source: 'FORMS', _color: 'text-blue-400' });
+  });
+
+  (report.brokenLinks || []).forEach(e => {
+    if (e.page === pageUrl) issues.push({ ...e, _source: 'LINK', _color: 'text-red-400' });
+  });
+
+  return issues;
 };
 
 const IssueTable = ({ data, columns, setRemediationCode, onAskAI, reportId }) => {
@@ -483,34 +508,54 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 p-6">
+      {/* --- Premium Navigation Grid --- */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 px-6 md:px-0">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex flex-col items-center justify-center gap-3 p-4 rounded-3xl transition-all duration-300 group relative border shadow-xl w-full aspect-square ${activeTab === tab.id
-                ? 'bg-[var(--eu-bg-card)] border-eu-accent shadow-neon-strong z-20 scale-105'
-                : 'bg-[var(--eu-bg-card)] border-[var(--eu-glass-border)] hover:border-eu-accent/40 z-10'
-              }`}
+            className={`flex flex-col items-center justify-center gap-3 p-5 rounded-[32px] transition-all duration-700 group relative w-full aspect-square border-0 overflow-hidden nav-card-premium ${
+              activeTab === tab.id ? 'active scale-105 z-20' : 'hover:scale-102 z-10'
+            }`}
           >
-            <div className={`size-10 rounded-2xl flex items-center justify-center transition-all duration-700 ${activeTab === tab.id
-                ? 'bg-eu-accent/10 text-eu-accent scale-110'
-                : 'bg-[var(--eu-bg-void)] text-[var(--eu-text-main)] opacity-40 group-hover:opacity-100 group-hover:scale-105'
-              }`}>
+            {/* Background Accent Glow */}
+            {activeTab === tab.id && (
+              <div className="absolute inset-0 bg-gradient-to-br from-eu-accent/10 to-eu-accent-violet/10 opacity-50" />
+            )}
+            
+            {/* Icon Container */}
+            <div className={`size-12 rounded-2xl flex items-center justify-center transition-all duration-700 relative z-10 ${
+              activeTab === tab.id
+                ? 'bg-white/10 text-white shadow-neon border border-white/20 scale-110'
+                : 'bg-white/5 text-[var(--eu-text-main)] opacity-30 group-hover:opacity-100 group-hover:bg-white/10'
+            }`}>
               {tab.icon}
             </div>
-            <div className="text-center">
-              <p className={`text-[10px] font-black uppercase tracking-widest mb-1 transition-colors ${activeTab === tab.id ? 'text-eu-accent' : 'text-[var(--eu-text-main)] opacity-50'
-                }`}>
+
+            {/* Label & Status Hub */}
+            <div className="text-center relative z-10 mt-1">
+              <p className={`text-[9px] font-black uppercase tracking-[0.2em] mb-3 transition-all duration-500 neon-text-glow ${
+                activeTab === tab.id ? 'text-white' : 'text-[var(--eu-text-main)] opacity-40'
+              }`}>
                 {tab.label}
               </p>
+              
               {tab.count !== undefined && (
-                <span className={`text-[12px] font-black font-mono transition-colors ${activeTab === tab.id ? 'text-eu-accent' : 'text-primary'
-                  }`}>
-                  {tab.count < 10 && tab.count > 0 ? `0${tab.count}` : tab.count === 0 ? '00' : tab.count}
-                </span>
+                <div className={`inline-flex items-center justify-center count-badge-premium ${tab.count > 0 ? 'text-eu-accent' : 'text-slate-600'}`}>
+                  <span className="text-[14px] leading-none pt-0.5">
+                    {tab.count < 10 ? `0${tab.count}` : tab.count}
+                  </span>
+                </div>
               )}
             </div>
+
+            {/* Selection indicator */}
+            {activeTab === tab.id && (
+              <motion.div 
+                layoutId="active-nav-glow"
+                className="absolute inset-x-0 bottom-0 h-1 bg-eu-accent shadow-neon-strong"
+              />
+            )}
           </button>
         ))}
       </div>
@@ -532,16 +577,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
                 </motion.div>
               )}
 
-              {/* ── Neural Web Mapping (NEW) ── */}
-              {report.siteStructure && report.siteStructure.nodes?.length > 0 && (
-                <div className="space-y-6">
-                  <div className="flex items-center gap-4">
-                    <div className="size-10 bg-eu-accent/20 rounded-xl flex items-center justify-center border border-eu-accent/30 shadow-neon text-eu-accent"><Globe size={16} /></div>
-                    <h3 className="text-xl font-black uppercase tracking-tight font-outfit text-white">Neural <span className="text-eu-accent italic">Lattice</span></h3>
-                  </div>
-                  <NeuralMap structure={report.siteStructure} activeUrl={report.url} />
-                </div>
-              )}
+
 
               {/* ── Neural Analysis Hub (AI Insights) ── */}
               {report.aiInsights ? (
@@ -819,28 +855,34 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
 
           {activeTab === 'screenshots' && (
             <motion.div key="screenshots" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {(report.screenshots || []).map((s, i) => (
-                <div key={i} className="group glass-euphoria p-3 rounded-2xl space-y-3 border border-[var(--eu-glass-border)] hover:border-eu-accent/30 transition-all duration-700 hover:-translate-y-1 shadow-xl">
-                  <div className="aspect-video overflow-hidden rounded-xl bg-[var(--eu-bg-void)]/60 border border-[var(--eu-glass-border)] shadow-inner relative">
-                    <img src={`${API_BASE}${s.path}`} alt={s.page} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 grayscale group-hover:grayscale-0" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-3">
-                      <p className="text-[8px] font-black text-white uppercase tracking-widest">{s.page}</p>
+              {(report.screenshots || []).map((s, i) => {
+                const pageIssues = getAllIssuesForPage(report, s.page);
+                return (
+                  <div key={i} className="group glass-euphoria p-3 rounded-2xl space-y-3 border border-white/5 hover:border-eu-accent/30 transition-all duration-700 hover:-translate-y-1 shadow-xl">
+                    <div className="aspect-video overflow-hidden rounded-xl bg-[var(--eu-bg-void)]/60 border border-white/5 shadow-inner relative cursor-pointer" onClick={() => setPreviewImage(s)}>
+                      <img src={`${API_BASE}${s.path}`} alt={s.page} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 grayscale group-hover:grayscale-0" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex flex-col justify-end p-3">
+                         <div className="flex gap-2 mb-2">
+                           {pageIssues.length > 0 && <span className="px-2 py-0.5 rounded-md bg-primary text-[7px] font-black text-white shadow-neon">{pageIssues.length} ISSUES FOUND</span>}
+                         </div>
+                        <p className="text-[10px] font-black text-white uppercase tracking-widest truncate">{s.page}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between px-1">
+                      <div className="space-y-0.5 min-w-0">
+                        <p className="text-[8px] font-black text-eu-accent uppercase tracking-[0.2em] font-outfit">{s.type}</p>
+                        <p className="text-[11px] font-black text-white truncate max-w-[150px] font-outfit">{new URL(s.page).pathname}</p>
+                      </div>
+                      <button
+                        onClick={() => setPreviewImage(s)}
+                        className="size-10 bg-white/5 rounded-xl flex items-center justify-center text-eu-accent hover:bg-eu-accent/20 transition-all border border-white/10 shadow-inner group-hover:shadow-neon"
+                      >
+                        <Sparkles size={14} className="animate-pulse" />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between px-1">
-                    <div className="space-y-0.5 min-w-0">
-                      <p className="text-[8px] font-black text-eu-accent uppercase tracking-[0.2em] font-outfit">{s.type}</p>
-                      <p className="text-[11px] font-black text-white truncate max-w-[150px] font-outfit">{s.page}</p>
-                    </div>
-                    <button
-                      onClick={() => setPreviewImage(`${API_BASE}${s.path}`)}
-                      className="size-8 bg-[var(--eu-bg-void)]/60 rounded-lg flex items-center justify-center text-[var(--eu-text-main)] opacity-40 group-hover:text-eu-accent transition-all border border-[var(--eu-glass-border)] shadow-inner"
-                    >
-                      <ExternalLink size={12} />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </motion.div>
           )}
         </AnimatePresence>
@@ -853,20 +895,71 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setPreviewImage(null)}
-            className="fixed inset-0 z-[999] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 md:p-20"
+            className="fixed inset-0 z-[999] bg-black/95 backdrop-blur-3xl flex items-center justify-center p-4 md:p-10"
           >
-            <div className="absolute top-8 right-8 text-white/40 hover:text-white cursor-pointer transition-all hover:scale-110">
-              <AlertCircle size={48} className="rotate-45" />
-            </div>
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 30 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 30 }}
               onClick={e => e.stopPropagation()}
-              className="relative max-w-7xl max-h-[92vh] glass-euphoria p-1.5 rounded-[32px] border-[var(--eu-glass-border)] shadow-[0_0_120px_rgba(var(--eu-accent-rgb),0.25)] flex items-center justify-center"
+              className="relative w-full max-w-7xl h-[90vh] glass-euphoria rounded-[40px] border border-white/10 shadow-[0_0_120px_rgba(var(--eu-accent-rgb),0.25)] flex flex-col md:flex-row overflow-hidden"
             >
-              <img src={previewImage} alt="Neural Preview" className="max-w-full max-h-[85vh] rounded-[26px] object-contain shadow-2xl" />
+              {/* Left Side: Visual Context */}
+              <div className="flex-[3] relative bg-[var(--eu-bg-void)] border-r border-white/5 overflow-hidden flex items-center justify-center group">
+                 <img src={`${API_BASE}${previewImage.path}`} alt="Neural Preview" className="max-w-full max-h-full object-contain shadow-2xl transition-transform duration-500 group-hover:scale-105" />
+                 <div className="absolute top-6 left-6 flex items-center gap-3">
+                    <div className="px-5 py-2 bg-eu-accent text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-neon">Tactical Snapshot</div>
+                    <div className="px-5 py-2 bg-white/5 border border-white/10 text-white/50 text-[10px] font-black uppercase tracking-widest rounded-xl backdrop-blur-md">{previewImage.page}</div>
+                 </div>
+                 <button onClick={() => setPreviewImage(null)} className="absolute top-6 right-6 size-12 hover:bg-white/5 rounded-2xl flex items-center justify-center text-white/40 hover:text-white transition-all">
+                    <X size={24} />
+                 </button>
+              </div>
+
+              {/* Right Side: Tactical Error Feed */}
+              <div className="flex-[2] flex flex-col h-full bg-black/40 backdrop-blur-md border-l border-white/10">
+                 <div className="p-8 border-b border-white/5">
+                    <div className="flex items-center gap-3 mb-2">
+                       <Activity size={18} className="text-eu-accent" />
+                       <h3 className="text-xl font-black uppercase tracking-widest text-white">Visual Audit Lab</h3>
+                    </div>
+                    <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">{getAllIssuesForPage(report, previewImage.page).length} Neural Failures Aligned to URL</p>
+                 </div>
+
+                 <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4">
+                    {getAllIssuesForPage(report, previewImage.page).length > 0 ? (
+                      getAllIssuesForPage(report, previewImage.page).map((issue, idx) => (
+                        <div key={idx} className="p-5 bg-white/5 border border-white/5 rounded-[24px] hover:border-eu-accent/30 transition-all group">
+                           <div className="flex items-center gap-3 mb-3">
+                              <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-md bg-black/40 border border-white/10 ${issue._color}`}>
+                                {issue._source}
+                              </span>
+                              {issue.severity && (
+                                <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-md bg-black/40 border border-white/10 ${issue.severity === 'High' || issue.severity === 'Critical' ? 'text-primary' : 'text-yellow-400'}`}>
+                                  {issue.severity}
+                                </span>
+                              )}
+                           </div>
+                           <p className="text-xs font-black text-white/90 mb-2 leading-relaxed">{issue.message || issue.issue || issue.status + ' ' + (issue.type || 'Error')}</p>
+                           {issue.recommendation && (
+                             <p className="text-[10px] text-white/40 font-medium leading-relaxed group-hover:text-white/60 transition-colors uppercase tracking-tight italic">Fix: {issue.recommendation}</p>
+                           )}
+                           {issue.url && <p className="text-[8px] text-eu-accent/40 font-mono mt-3 truncate">{issue.url}</p>}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center opacity-20 text-center -mt-10">
+                         <Zap size={48} className="mb-4" />
+                         <p className="text-[10px] font-black uppercase tracking-widest px-10">No specific failures synchronized for this visual capture.</p>
+                      </div>
+                    )}
+                 </div>
+
+                 <div className="p-8 bg-eu-accent/5 border-t border-white/5">
+                    <p className="text-[9px] font-black text-eu-accent uppercase tracking-widest mb-1">Diagnostic Context</p>
+                    <p className="text-[11px] font-black text-white/60 uppercase">Manual remediation required for neural path: {new URL(previewImage.page).pathname}</p>
+                 </div>
+              </div>
             </motion.div>
           </motion.div>
         </AnimatePresence>,

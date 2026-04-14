@@ -157,7 +157,7 @@ const ChatInterface = ({
   const [isScanning, setIsScanning] = useState(false);
   const [chatMeta, setChatMeta] = useState(null); // { url, _id }
   const [loading, setLoading] = useState(false);
-  const [scanParams, setScanParams] = useState({ scope: 'single', mode: 'specific', tests: ['console', 'network', 'lighthouse', 'accessibility', 'links'] });
+  const [scanParams, setScanParams] = useState({ scope: 'single', mode: 'specific', tests: ['console', 'network', 'forms', 'ui', 'lighthouse', 'accessibility', 'links'] });
   const [showSensors, setShowSensors] = useState(false);
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
@@ -217,9 +217,7 @@ const ChatInterface = ({
     }
     if (status === 'completed' || percent === 100) {
       setIsScanning(false);
-      // New: The 'new-message' socket event will handle the UI update instantly
-      // for the summary card. Only trigger sidebar refresh.
-      if (onRefresh) onRefresh(); 
+      // Removed redundant onRefresh() - handled globally in App.jsx listener
     }
     if (status === 'failed') {
       setIsScanning(false);
@@ -382,18 +380,8 @@ const ChatInterface = ({
         message: finalInput,
         scanReportId: manualReportId || latestReport?.scanReportId || null
       });
-      setMessages(prev => {
-        const newMsgId = data.message?._id;
-        if (newMsgId && prev.some(m => m._id === newMsgId)) {
-          return prev;
-        }
-        return [...prev, {
-          _id: newMsgId || 'tmp-ai-' + Date.now(),
-          type: 'ai',
-          content: data.reply,
-          createdAt: data.message?.createdAt || new Date()
-        }];
-      });
+      // AI message addition is now handled exclusively by the 'new-message' socket event
+      // to prevent duplicate bubbles in the UI.
     } catch (err) {
       const errMsg = err.response?.data?.error || err.message || 'Neural uplink failure.';
       console.error('[Ask AI Error]:', errMsg);

@@ -104,8 +104,9 @@ async function runMasterOrchestrator(data) {
                 if (workerData.prevReportId) return;
 
                 try {
-                    const insightSummary = "Sentinel AI is analyzing structural integrity and network protocols...";
-                    const earlyMsg = await safeMessageUplink(chatId, 'report', `Early Diagnostic Insight for ${baseUrl}`, reportId, insightSummary);
+                    const insightSummary = "Strategic Analysis: Sentinel AI is engaging core diagnostics for " + baseUrl + "...";
+                    // Change type from 'report' to 'ai' to avoid duplicate scan counts
+                    const earlyMsg = await safeMessageUplink(chatId, 'ai', insightSummary, reportId, null);
                     if (earlyMsg && parentPort) {
                         parentPort.postMessage({ type: 'new-message', message: earlyMsg.toObject() });
                     }

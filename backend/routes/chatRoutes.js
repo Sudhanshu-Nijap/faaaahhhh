@@ -3,7 +3,11 @@ const router = express.Router();
 const Chat = require('../models/Chat');
 const Message = require('../models/Message');
 const ScanReport = require('../models/ScanReport');
+const Job = require('../models/Job');
 const chatAgent = require('../services/chatAgent');
+const fs = require('fs');
+const path = require('path');
+const { activeWorkers } = require('./scanRoutes');
 
 // ── Find or create chat thread for a URL ──────────────────────────────────────
 router.post('/thread/start', async (req, res) => {
@@ -39,7 +43,8 @@ router.get('/threads', async (req, res) => {
                 .sort({ createdAt: -1 }).lean();
             const scanCount = await Message.countDocuments({ 
                 chatId: chat._id, 
-                type: { $in: ['report', 'rescan'] } 
+                type: { $in: ['report', 'rescan'] },
+                scanReportId: { $exists: true, $ne: null }
             });
             return {
                 ...chat.toObject(),
@@ -220,10 +225,54 @@ router.patch('/thread/:chatId/rename', async (req, res) => {
 // ── Delete a thread and all its messages ──────────────────────────────────────
 router.delete('/thread/:chatId', async (req, res) => {
     try {
-        await Message.deleteMany({ chatId: req.params.chatId });
-        await Chat.findByIdAndDelete(req.params.chatId);
-        res.json({ message: 'Thread deleted' });
+        const { chatId } = req.params;
+        const chat = await Chat.findById(chatId);
+        if (!chat) return res.status(404).json({ error: 'Chat not found' });
+
+        const { userId, url } = chat;
+        console.log(`[ChatDelete]: Commencing cascading delete for ${url} (User: ${userId})`);
+
+        // 1. Clean up Scan Reports and Files
+        const reports = await ScanReport.find({ userId, url });
+        for (const report of reports) {
+            // Terminate any active tactical worker for this report
+            const activeWorker = activeWorkers.get(report._id.toString());
+            if (activeWorker) {
+                console.log(`[ChatDelete]: Terminating active worker for report ${report._id}`);
+                await activeWorker.terminate();
+                activeWorkers.delete(report._id.toString());
+            }
+
+            // Clean up screenshots
+            if (report.screenshots && report.screenshots.length > 0) {
+                report.screenshots.forEach(s => {
+                    if (s.path) {
+                        const imgPath = path.join(__dirname, '..', s.path);
+                        if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+                    }
+                });
+            }
+
+            // Clean up PDF reports
+            const pdfPath = path.join(__dirname, '..', 'reports', `report-${report._id}.pdf`);
+            if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
+
+            await ScanReport.findByIdAndDelete(report._id);
+        }
+
+        // 2. Delete Scheduled Jobs
+        await Job.deleteMany({ userId, url });
+
+        // 3. Delete Messages
+        await Message.deleteMany({ chatId });
+
+        // 4. Delete Chat
+        await Chat.findByIdAndDelete(chatId);
+
+        console.log(`[ChatDelete]: Cascade complete for ${url}`);
+        res.json({ message: 'Thread and all associated data deleted successfully' });
     } catch (err) {
+        console.error('[ChatDelete Fault]:', err.message);
         res.status(500).json({ error: err.message });
     }
 });

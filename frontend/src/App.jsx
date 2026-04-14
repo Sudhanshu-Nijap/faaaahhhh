@@ -664,6 +664,7 @@ function App() {
                     onClick={() => {
                       setScanProgress(null);
                       localStorage.removeItem('sentinel_pending_progress');
+                      window.location.reload();
                     }}
                     className="size-8 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl flex items-center justify-center text-white/40 hover:text-white transition-all shadow-sm"
                     title="Dismiss Progress Monitor"

@@ -17,7 +17,8 @@ const categories = [
   "Pro Debugging Tips",
   "API Error",
   "CSS Bug",
-  "Async/Await Mistakes"
+  "Async/Await Mistakes",
+  "HTTP Protocol"
 ];
 
 const LearningHubPage = () => {

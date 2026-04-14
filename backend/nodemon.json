@@ -1,0 +1,11 @@
+{
+  "ignore": [
+    "screenshots/*",
+    "reports/*",
+    "data/*",
+    "*.json",
+    "node_modules/*"
+  ],
+  "ext": "js,env",
+  "delay": "1000"
+}

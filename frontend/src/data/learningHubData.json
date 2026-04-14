@@ -88,5 +88,149 @@
     "example": "$ git bisect start\n$ git bisect bad HEAD\n$ git bisect good v1.2.0\n# Git checks out a midpoint for you to test.",
     "solution": "1. Find a known good state.\n2. Narrow down the offending commit.\n3. Review the diff to understand what broke.",
     "tip": "Keep commits small and focused so identifying the root cause is easier."
+  },
+  {
+    "id": 11,
+    "category": "HTTP Protocol",
+    "title": "200 OK",
+    "description": "The standard response for successful HTTP requests. It means the request was received, understood, and processed successfully.",
+    "example": "HTTP/1.1 200 OK\nContent-Type: application/json\n\n{ \"status\": \"success\", \"data\": [...] }",
+    "solution": "No action needed. Ensure your client correctly parses the returned data substrate.",
+    "tip": "The most common success code. Use it for GET, PUT, and successful POST requests."
+  },
+  {
+    "id": 12,
+    "category": "HTTP Protocol",
+    "title": "201 Created",
+    "description": "Indicates that the request has been fulfilled and has resulted in one or more new resources being created on the server.",
+    "example": "POST /api/users HTTP/1.1\n\nHTTP/1.1 201 Created\nLocation: /api/users/123",
+    "solution": "Verify the resource was successfully created in the database and provide its URI in the Location header.",
+    "tip": "Best practice for RESTful APIs when creating new entities via POST."
+  },
+  {
+    "id": 13,
+    "category": "HTTP Protocol",
+    "title": "204 No Content",
+    "description": "The server successfully processed the request, but is not returning any content in the response body.",
+    "example": "DELETE /api/logs/old HTTP/1.1\n\nHTTP/1.1 204 No Content",
+    "solution": "Use this when a confirmation of success is needed but no data return is required.",
+    "tip": "Commonly used for successful DELETE or PUT requests that don't need a response body."
+  },
+  {
+    "id": 14,
+    "category": "HTTP Protocol",
+    "title": "301 Moved Permanently",
+    "description": "The requested resource has been assigned a new permanent URI. Future references should use one of the returned URIs.",
+    "example": "HTTP/1.1 301 Moved Permanently\nLocation: https://new-vision.com/target",
+    "solution": "Update internal links and ensure the 'Location' header points to the correct destination.",
+    "tip": "Essential for SEO to preserve link authority during URL migrations."
+  },
+  {
+    "id": 15,
+    "category": "HTTP Protocol",
+    "title": "304 Not Modified",
+    "description": "Indicates that the resource has not been modified since the version specified by the request headers If-Modified-Since or If-None-Match.",
+    "example": "GET /static/style.css HTTP/1.1\nIf-None-Match: \"v1.2\"\n\nHTTP/1.1 304 Not Modified",
+    "solution": "Client should use its cached version of the resource. No body is sent.",
+    "tip": "Reduces bandwidth usage and improves performance through neural caching."
+  },
+  {
+    "id": 16,
+    "category": "HTTP Protocol",
+    "title": "400 Bad Request",
+    "description": "The server cannot process the request due to a client error (e.g., malformed request syntax, invalid request message framing).",
+    "example": "POST /api/login HTTP/1.1\n{ \"invalid\": \"json\" ... }\n\nHTTP/1.1 400 Bad Request",
+    "solution": "Validate request payloads on the client side. Ensure the content-type matches the payload.",
+    "tip": "Often points to a mismatch between frontend state and backend validation schemas."
+  },
+  {
+    "id": 17,
+    "category": "HTTP Protocol",
+    "title": "401 Unauthorized",
+    "description": "Semantically this means 'unauthenticated'. The client must authenticate itself to get the requested response.",
+    "example": "GET /api/vault HTTP/1.1\n(Missing Token)\n\nHTTP/1.1 401 Unauthorized",
+    "solution": "Redirect to login or trigger a token refresh flow. Check if the Bearer token is expired.",
+    "tip": "Always check the 'WWW-Authenticate' header for details on the required authentication."
+  },
+  {
+    "id": 18,
+    "category": "HTTP Protocol",
+    "title": "403 Forbidden",
+    "description": "The client does not have access rights to the content. Unlike 401, the client's identity is known to the server.",
+    "example": "GET /api/admin-core HTTP/1.1\n(User has 'member' role only)\n\nHTTP/1.1 403 Forbidden",
+    "solution": "Verify user permissions and role-based access controls (RBAC). Ensure the user has the required scopes.",
+    "tip": "Often used to block unwanted neural probes or restricted administrative logic."
+  },
+  {
+    "id": 19,
+    "category": "HTTP Protocol",
+    "title": "404 Not Found",
+    "description": "The server cannot find the requested resource. This can also be used to hide the existence of a resource from an unauthorized client.",
+    "example": "GET /api/ghost-protocol HTTP/1.1\n\nHTTP/1.1 404 Not Found",
+    "solution": "Check URL spelling, dynamic route parameters, and verify the resource exists in the database.",
+    "tip": "Dead links are toxic to user experience and SEO. Use audits to find them."
+  },
+  {
+    "id": 20,
+    "category": "HTTP Protocol",
+    "title": "405 Method Not Allowed",
+    "description": "The request method is known by the server but is not supported by the target resource.",
+    "example": "POST /api/static-file HTTP/1.1\n\nHTTP/1.1 405 Method Not Allowed\nAllow: GET, HEAD",
+    "solution": "Check your API documentation. Use the correct HTTP verb (GET, POST, etc.) for the endpoint.",
+    "tip": "Check the 'Allow' header in the response to see which methods are permitted."
+  },
+  {
+    "id": 21,
+    "category": "HTTP Protocol",
+    "title": "422 Unprocessable Entity",
+    "description": "The request was well-formed but was unable to be followed due to semantic errors (e.g., validation failed).",
+    "example": "POST /api/user HTTP/1.1\n{ \"email\": \"invalid-format\" }\n\nHTTP/1.1 422 Unprocessable Entity",
+    "solution": "Correct the validation errors reported in the server's response body.",
+    "tip": "Standard for modern JSON APIs to communicate complex validation failures."
+  },
+  {
+    "id": 22,
+    "category": "HTTP Protocol",
+    "title": "429 Too Many Requests",
+    "description": "The user has sent too many requests in a given amount of time ('rate limiting').",
+    "example": "HTTP/1.1 429 Too Many Requests\nRetry-After: 3600",
+    "solution": "Implement exponential backoff or wait for the 'Retry-After' duration before re-syncing.",
+    "tip": "Critical for protecting neural substrates from DDoS or abusive scraping."
+  },
+  {
+    "id": 23,
+    "category": "HTTP Protocol",
+    "title": "500 Internal Server Error",
+    "description": "General error message when an unexpected condition was encountered and no more specific message is suitable.",
+    "example": "HTTP/1.1 500 Internal Server Error\n\n{ \"error\": \"Neural Bridge Failure (NullPointer)\" }",
+    "solution": "Check backend logs immediately. This usually indicates a crash in the server-side logic.",
+    "tip": "The 'catch-all' of server errors. Always monitor for spikes in 500s."
+  },
+  {
+    "id": 24,
+    "category": "HTTP Protocol",
+    "title": "502 Bad Gateway",
+    "description": "The server, while acting as a gateway or proxy, received an invalid response from the upstream server.",
+    "example": "HTTP/1.1 502 Bad Gateway",
+    "solution": "Check the status of upstream microservices or reverse proxies (like Nginx/Cloudflare).",
+    "tip": "Often points to a communication failure between different parts of the infrastructure."
+  },
+  {
+    "id": 25,
+    "category": "HTTP Protocol",
+    "title": "503 Service Unavailable",
+    "description": "The server is currently unable to handle the request due to a temporary overload or scheduled maintenance.",
+    "example": "HTTP/1.1 503 Service Unavailable\nRetry-After: 300",
+    "solution": "Check server load, horizontal scaling status, or maintenance windows.",
+    "tip": "Use this code to signal clients that they should try again later."
+  },
+  {
+    "id": 26,
+    "category": "HTTP Protocol",
+    "title": "504 Gateway Timeout",
+    "description": "The server, while acting as a gateway or proxy, did not receive a timely response from the upstream server.",
+    "example": "HTTP/1.1 504 Gateway Timeout",
+    "solution": "Increase timeout thresholds or optimize the performance of the upstream neural process.",
+    "tip": "Common when long-running tasks (like deep scans) exceed proxy timeouts."
   }
 ]

@@ -77,12 +77,60 @@ const scanForms = async (page) => {
 const scanUI = async (page) => {
     return await page.evaluate(() => {
         const issues = [];
+        
+        // 1. Layout Integrity
         if (document.body.scrollWidth > window.innerWidth) {
-            issues.push({ type: 'layout', issue: 'Horizontal overflow detected', severity: 'Medium' });
+            issues.push({ type: 'UX_VISUAL', issue: 'Horizontal overflow detected', severity: 'Medium', recommendation: 'Check for elements with fixed widths or absolute positioning leaking outside of viewport.' });
         }
+        
+        // 2. SEO & Structure
         if (!document.querySelector('h1')) {
-            issues.push({ type: 'layout', issue: 'Missing H1 heading', severity: 'Low' });
+            issues.push({ type: 'SEO_STRUCTURAL', issue: 'Missing H1 heading', severity: 'Low', recommendation: 'Every page should have exactly one H1 for optimal search indexing.' });
         }
+
+        // 3. Image UX
+        const images = Array.from(document.querySelectorAll('img'));
+        images.forEach(img => {
+            if (!img.alt && !img.hasAttribute('aria-label')) {
+                issues.push({ 
+                    type: 'UX_ACCESSIBILITY', 
+                    issue: 'Image missing alternate text', 
+                    severity: 'High', 
+                    selector: img.className || img.src.split('/').pop(),
+                    recommendation: 'Add alt=\"\" for decorative images or descriptive text for informational images.' 
+                });
+            }
+        });
+
+        // 4. Interactive Target Integrity (Mobile UX)
+        const interactive = Array.from(document.querySelectorAll('a, button, input[type=\"button\"], input[type=\"submit\"]'));
+        interactive.forEach(el => {
+            const rect = el.getBoundingClientRect();
+            // Minimum recommended touch target is 44x44px or 24x24px with sufficient spacing
+            if (rect.width > 0 && rect.height > 0 && (rect.width < 24 || rect.height < 24)) {
+                issues.push({
+                    type: 'UX_MOBILE',
+                    issue: 'Small touch target detected',
+                    severity: 'Medium',
+                    selector: el.innerText?.substring(0, 20) || 'anonymous',
+                    recommendation: 'Increase target size to at least 44x44px for better mobile accessibility.'
+                });
+            }
+
+            // Empty interactive elements
+            if (el.tagName === 'BUTTON' || el.tagName === 'A') {
+                if (!el.innerText?.trim() && !el.getAttribute('aria-label') && !el.querySelector('svg, img')) {
+                    issues.push({
+                        type: 'UX_VISUAL',
+                        issue: 'Empty interactive element detected',
+                        severity: 'High',
+                        selector: el.className,
+                        recommendation: 'Ensure all buttons and links have visible text or an aria-label for screen readers.'
+                    });
+                }
+            }
+        });
+
         return issues;
     });
 };
@@ -155,6 +203,7 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
                 totalSize += size;
                 if (status >= 400) {
                     rawNetwork.push({
+                        page: url,
                         method: response.request().method(),
                         url: response.url(),
                         status,
@@ -281,7 +330,7 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
         if (brokenLinks.length > 0) finalUpdate.$push.brokenLinks = { $each: brokenLinks };
         if (formIssues.length > 0) {
             if (!finalUpdate.$push) finalUpdate.$push = {};
-            finalUpdate.$push.formIssues = { $each: formIssues };
+            finalUpdate.$push.formIssues = { $each: formIssues.map(f => ({ ...f, page: url })) };
         }
         
         console.log(`[scanEngine]: Saving tactical telemetry for ${url}...`);
@@ -325,12 +374,31 @@ const runTargetedCrawlScan = async (reportId, url, tests, emitProgress, scope = 
         maxDepth: scope === 'site' ? 2 : 0 
     });
     
-    // Parallel Diagnostic Surge - Only diagnostic entry page for speed
-    // If multiple pages are found, they're only tracked in the discovery stage
-    if (pages.length > 0) {
-        await runSinglePageScan(reportId, pages[0], tests, emitProgress).catch(err => {
-            console.error(`[scanEngine]: Targeted page scan failed for ${pages[0]}: ${err.message}`);
-        });
+    // 2. Multiphase Audit
+    const auditLimit = 10;
+    const pagesToAudit = pages.slice(0, auditLimit);
+    
+    if (pagesToAudit.length > 0) {
+        console.log(`[scanEngine]: Tactical Audit for ${pagesToAudit.length} pages starting...`);
+        
+        for (let i = 0; i < pagesToAudit.length; i++) {
+            const pageUrl = pagesToAudit[i];
+            const displayUrl = pageUrl.replace(url, '/***/'); 
+            
+            // Sub-progress tracking for each page
+            const onPageProgress = (percent, message) => {
+                const totalProgress = Math.round(((i / pagesToAudit.length) * 100) + (percent / pagesToAudit.length));
+                emitProgress(totalProgress, `Audit [${i+1}/${pagesToAudit.length}] ${displayUrl}: ${message}`);
+            };
+
+            await runSinglePageScan(reportId, pageUrl, tests, onPageProgress).catch(err => {
+                console.error(`[scanEngine]: Targeted page scan failed for ${pageUrl}: ${err.message}`);
+                emitProgress(Math.round(((i + 1) / pagesToAudit.length) * 100), `Audit [${i+1}/${pagesToAudit.length}] FAILED: ${displayUrl}`);
+            });
+        }
+    } else {
+        console.warn(`[scanEngine]: Discovery yielded no targets for ${url}`);
+        emitProgress(100, 'Discovery yielded no audit targets.');
     }
 };
 
