@@ -1,3 +1,4 @@
+import { API_URL, SOCKET_URL } from '../config/api';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal, Shield, Zap, Skull, Activity, Cpu, Loader2 } from 'lucide-react';
@@ -10,12 +11,12 @@ const LiveFuzzingConsole = ({ reportId }) => {
   const scrollRef = useRef(null);
 
   useEffect(() => {
-    const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5005';
+    const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || `${API_URL}`;
     const socket = io(SOCKET_URL);
 
     const fetchInitialEvents = async () => {
       try {
-        const { data } = await axios.get(`http://localhost:5005/api/report/${reportId}`);
+        const { data } = await axios.get(`${API_URL}/api/report/${reportId}`);
         if (data.liveEvents) {
           setEvents(data.liveEvents);
         }

@@ -1,3 +1,4 @@
+import { API_URL, SOCKET_URL } from '../config/api';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Lock, User, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
@@ -40,7 +41,7 @@ const AuthModal = ({ isOpen, onClose, onLogin }) => {
 
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
-      const response = await axios.post(`http://localhost:5005${endpoint}`, {
+      const response = await axios.post(`${API_URL}${endpoint}`, {
         email,
         password,
         username: isLogin ? undefined : username

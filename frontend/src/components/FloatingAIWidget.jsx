@@ -1,3 +1,4 @@
+import { API_URL, SOCKET_URL } from '../config/api';
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -17,7 +18,7 @@ const FloatingAIWidget = () => {
         setIsLoading(true);
         setResponse(null);
         try {
-            const { data } = await axios.post('http://localhost:5005/api/learning/ask', { question: input });
+            const { data } = await axios.post(`${API_URL}/api/learning/ask`, { question: input });
             setResponse(data);
             // Don't clear input immediately so they see what they asked
         } catch (error) {

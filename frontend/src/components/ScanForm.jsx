@@ -1,3 +1,4 @@
+import { API_URL, SOCKET_URL } from '../config/api';
 import React, { useState } from 'react';
 import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { Search, Globe, Shield, Sparkles, ArrowRight, Loader2, Zap, Target, Cpu } from 'lucide-react';
@@ -87,7 +88,7 @@ const ScanForm = ({ onScanStarted }) => {
       
       if (showScheduling) {
         // Create a scheduled job
-        await axios.post('http://localhost:5005/api/scheduling/jobs', {
+        await axios.post(`${API_URL}/api/scheduling/jobs`, {
           ...schedule,
           url: targetUrl,
           userId
@@ -97,7 +98,7 @@ const ScanForm = ({ onScanStarted }) => {
         // We might want a callback here to notify parent about new job
       } else {
         // Run immediate scan
-        const response = await axios.post('http://localhost:5005/api/scan', { 
+        const response = await axios.post(`${API_URL}/api/scan`, { 
           url: targetUrl, 
           userId,
           chaosIntensity 

@@ -1,3 +1,4 @@
+import { API_URL, SOCKET_URL } from '../config/api';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Folder, Cpu, Zap, X, Terminal, Code, AlertTriangle, ShieldCheck } from 'lucide-react';
@@ -14,7 +15,7 @@ const IDEView = ({ onClose }) => {
     const [error, setError] = useState(null);
     const [deploying, setDeploying] = useState(false);
  
-    const API_DEBUG_URL = 'http://localhost:5005/neural-debug-engine-v1';
+    const API_DEBUG_URL = `${API_URL}/neural-debug-engine-v1`;
 
     const handleRunDebug = async (e) => {
         e.preventDefault();

@@ -1,3 +1,4 @@
+import { API_URL, SOCKET_URL } from '../config/api';
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -62,7 +63,7 @@ const ChatSidebar = ({
     } else if (userId) {
       import('axios').then(async a => {
         try {
-          const { data } = await a.default.get(`http://localhost:5005/api/auth/profile/${userId}`);
+          const { data } = await a.default.get(`${API_URL}/api/auth/profile/${userId}`);
           const d = { username: data.username, email: data.email };
           setUserData(d);
           localStorage.setItem('userData', JSON.stringify(d));
@@ -76,7 +77,7 @@ const ChatSidebar = ({
     if (!userId) { setLoading(false); return; }
     setLoading(true);
     try {
-      const { data } = await import('axios').then(a => a.default.get(`http://localhost:5005/api/chat/threads?userId=${userId}`));
+      const { data } = await import('axios').then(a => a.default.get(`${API_URL}/api/chat/threads?userId=${userId}`));
       const sorted = data.sort((a, b) => {
         if (a.isPinned && !b.isPinned) return -1;
         if (!a.isPinned && b.isPinned) return 1;
@@ -101,7 +102,7 @@ const ChatSidebar = ({
     });
     if (!ok) return;
     try {
-      await import('axios').then(a => a.default.delete(`http://localhost:5005/api/chat/thread/${id}`));
+      await import('axios').then(a => a.default.delete(`${API_URL}/api/chat/thread/${id}`));
       setAlert({ type: 'success', message: 'Thread deleted.' });
       if (onDeleteChat) onDeleteChat(id);
       loadChats();
@@ -112,7 +113,7 @@ const ChatSidebar = ({
 
   const handlePin = async (id) => {
     try {
-      await import('axios').then(a => a.default.patch(`http://localhost:5005/api/chat/thread/${id}/pin`));
+      await import('axios').then(a => a.default.patch(`${API_URL}/api/chat/thread/${id}/pin`));
       loadChats();
     } catch {
       setAlert({ type: 'error', message: 'Pin failed.' });
@@ -123,7 +124,7 @@ const ChatSidebar = ({
     const newName = await promptFn({ title: 'Rename Thread', message: 'New name:', confirmText: 'Rename' });
     if (!newName) return;
     try {
-      await import('axios').then(a => a.default.patch(`http://localhost:5005/api/chat/thread/${id}/rename`, { name: newName }));
+      await import('axios').then(a => a.default.patch(`${API_URL}/api/chat/thread/${id}/rename`, { name: newName }));
       loadChats();
     } catch {
       setAlert({ type: 'error', message: 'Rename failed.' });

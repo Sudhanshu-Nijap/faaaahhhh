@@ -1,3 +1,4 @@
+import { API_URL, SOCKET_URL } from '../config/api';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -37,7 +38,7 @@ const SchedulingDashboard = ({ setAlert, confirm }) => {
             }
             
             setLoading(true);
-            const { data } = await axios.get(`http://localhost:5005/api/scheduling/jobs?userId=${userId}`);
+            const { data } = await axios.get(`${API_URL}/api/scheduling/jobs?userId=${userId}`);
             setJobs(data);
         } catch (err) {
             setAlert({ type: 'error', message: 'Failed to sync scheduling substrate.' });
@@ -48,7 +49,7 @@ const SchedulingDashboard = ({ setAlert, confirm }) => {
 
     useEffect(() => {
         fetchJobs();
-        const socket = io('http://localhost:5005');
+        const socket = io(`${API_URL}`);
         socket.on('job-sync', (update) => {
             setJobs(prevJobs => prevJobs.map(job => 
                 job._id === update.jobId 
@@ -68,7 +69,7 @@ const SchedulingDashboard = ({ setAlert, confirm }) => {
 
     const handleToggleActive = async (job) => {
         try {
-            const { data } = await axios.patch(`http://localhost:5005/api/scheduling/job/${job._id}`, {
+            const { data } = await axios.patch(`${API_URL}/api/scheduling/job/${job._id}`, {
                 isActive: !job.isActive,
                 status: !job.isActive ? 'pending' : 'paused'
             });
@@ -88,7 +89,7 @@ const SchedulingDashboard = ({ setAlert, confirm }) => {
         });
         if (proceed) {
             try {
-                await axios.delete(`http://localhost:5005/api/scheduling/job/${jobId}`);
+                await axios.delete(`${API_URL}/api/scheduling/job/${jobId}`);
                 setJobs(jobs.filter(j => j._id !== jobId));
                 setAlert({ type: 'success', message: 'Job terminated.' });
             } catch (err) {
@@ -122,7 +123,7 @@ const SchedulingDashboard = ({ setAlert, confirm }) => {
 
     const handleManualRun = async (job) => {
         try {
-            await axios.post(`http://localhost:5005/api/scheduling/job/${job._id}/run`);
+            await axios.post(`${API_URL}/api/scheduling/job/${job._id}/run`);
             setAlert({ type: 'success', message: 'Manual override initiated. Generating report...' });
             // Local state optimistic update (backend will also emit 'job-sync')
             setJobs(prev => prev.map(j => j._id === job._id ? { ...j, status: 'running' } : j));

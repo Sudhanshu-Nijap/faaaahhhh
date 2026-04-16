@@ -24,6 +24,7 @@ import FloatingAIWidget from './components/FloatingAIWidget';
 import SchedulingDashboard from './components/SchedulingDashboard';
 import AddJobModal from './components/AddJobModal';
 import IDEView from './components/IDEView';
+import { API_URL, SOCKET_URL } from './config/api';
 
 function App() {
 
@@ -83,8 +84,7 @@ function App() {
     try {
       const userId = localStorage.getItem('userId');
       if (!userId) return;
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5005';
-      const { data } = await axios.get(`${API_BASE}/api/reports?userId=${userId}`);
+      const { data } = await axios.get(`${API_URL}/api/reports?userId=${userId}`);
       setReports(data);
     } catch (err) {
       console.error("Failed to sync reports for global intelligence", err);
@@ -95,7 +95,7 @@ function App() {
     try {
       const userId = localStorage.getItem('userId');
       if (!userId) return;
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:5005'}/api/scan/active/${userId}`);
+      const { data } = await axios.get(`${API_URL}/api/scan/active/${userId}`);
       if (data && data._id) {
         setActiveReportId(data._id);
         // REMOVED: setRefreshKey - this caused the infinite loop
@@ -143,7 +143,7 @@ function App() {
   // 1. Persistent Socket Initialization
   useEffect(() => {
     if (!socketRef.current) {
-      socketRef.current = io('http://localhost:5005', {
+      socketRef.current = io(SOCKET_URL, {
         reconnectionAttempts: 10
       });
 
@@ -241,12 +241,12 @@ function App() {
   const handleReScan = async (url, reportId = null) => {
     try {
       const userId = localStorage.getItem('userId');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5005/api';
+      const API_ENDPOINT = `${API_URL}/api`;
       
       let response;
       if (reportId) {
         // Use stateful rescan protocol (preserves modules, scope, etc.)
-        response = await axios.post(`${API_URL}/report/${reportId}/rescan`);
+        response = await axios.post(`${API_ENDPOINT}/report/${reportId}/rescan`);
       } else {
         // Fallback to simple URL rescan
         response = await axios.post(`${API_URL}/scan`, {

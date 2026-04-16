@@ -1,3 +1,4 @@
+import { API_URL, SOCKET_URL } from '../config/api';
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, Activity, Zap, BarChart3, Database } from 'lucide-react';
@@ -10,7 +11,7 @@ const TrendsSection = ({ url, userId }) => {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const { data } = await axios.get(`http://localhost:5005/api/stats/trends?url=${url}&userId=${userId}`);
+        const { data } = await axios.get(`${API_URL}/api/stats/trends?url=${url}&userId=${userId}`);
         setHistory(data);
       } catch (err) {
         console.error("Failed to fetch trends", err);

@@ -13,6 +13,7 @@ import ScanSummaryCard from './ScanSummaryCard';
 import SchedulingDashboard from './SchedulingDashboard';
 import GlobalIntelligence from './GlobalIntelligence';
 import LearningHubPage from './LearningHub/LearningHubPage';
+import { API_URL, SOCKET_URL } from '../config/api';
 
 // ── Date Separator ─────────────────────────────────────────────────────────────
 const DateSeparator = ({ date }) => (
@@ -66,7 +67,7 @@ const PreviousScansDropdown = ({ chatId, onSelect }) => {
 
   useEffect(() => {
     if (!open || !chatId) return;
-    axios.get(`http://localhost:5005/api/chat/thread/${chatId}/scans`)
+    axios.get(`${API_URL}/api/chat/thread/${chatId}/scans`)
       .then(r => setScans(r.data))
       .catch(() => {});
   }, [open, chatId]);
@@ -167,7 +168,7 @@ const ChatInterface = ({
 
   // ── Socket Infrastructure ────────────────────────────────────────────────────
   useEffect(() => {
-    const socket = io('http://localhost:5005');
+    const socket = io(SOCKET_URL);
     socketRef.current = socket;
 
     socket.on('connect', () => {
@@ -237,7 +238,7 @@ const ChatInterface = ({
 
   const loadMessages = useCallback(async (chatId) => {
     try {
-      const { data } = await axios.get(`http://localhost:5005/api/chat/thread/${chatId}/messages`);
+      const { data } = await axios.get(`${API_URL}/api/chat/thread/${chatId}/messages`);
       setMessages(data);
       scrollToBottom();
     } catch (err) {
@@ -249,7 +250,7 @@ const ChatInterface = ({
   useEffect(() => {
     if (activeChatId) {
       setLoading(true);
-      axios.get(`http://localhost:5005/api/chat/threads?userId=${localStorage.getItem('userId')}`)
+      axios.get(`${API_URL}/api/chat/threads?userId=${localStorage.getItem('userId')}`)
         .then(r => {
           const chat = r.data.find(c => c._id === activeChatId);
           setChatMeta(chat || null);
@@ -295,8 +296,8 @@ const ChatInterface = ({
     if (!currentChatId && manualReportId) {
       setIsTyping(true);
       try {
-        const { data: report } = await axios.get(`http://localhost:5005/api/reports/${manualReportId}`);
-        const { data: { chatId } } = await axios.post('http://localhost:5005/api/chat/thread/start', { 
+        const { data: report } = await axios.get(`${API_URL}/api/reports/${manualReportId}`);
+        const { data: { chatId } } = await axios.post(`${API_URL}/api/chat/thread/start`, { 
            url: report.url, 
            userId: localStorage.getItem('userId') 
         });
@@ -325,10 +326,10 @@ const ChatInterface = ({
 
       setIsTyping(true);
       try {
-        const { data: { chatId } } = await axios.post('http://localhost:5005/api/chat/thread/start', { url: targetUrl, userId });
-        await axios.post(`http://localhost:5005/api/chat/thread/${chatId}/message`, { type: 'user', content: targetUrl });
-        await axios.post(`http://localhost:5005/api/chat/thread/${chatId}/message`, { type: 'system', content: 'Diagnostic Scan Initiated' });
-        const { data: scanData } = await axios.post('http://localhost:5005/api/scan', {
+        const { data: { chatId } } = await axios.post(`${API_URL}/api/chat/thread/start`, { url: targetUrl, userId });
+        await axios.post(`${API_URL}/api/chat/thread/${chatId}/message`, { type: 'user', content: targetUrl });
+        await axios.post(`${API_URL}/api/chat/thread/${chatId}/message`, { type: 'system', content: 'Diagnostic Scan Initiated' });
+        const { data: scanData } = await axios.post(`${API_URL}/api/scan`, {
           url: targetUrl, userId, force: true, chatId,
           scope: scanParams.scope, mode: scanParams.mode, tests: scanParams.tests
         });
@@ -368,16 +369,16 @@ const ChatInterface = ({
         // Resolve URL — use chatMeta if loaded, otherwise fetch the chat directly
         let targetUrl = chatMeta?.url;
         if (!targetUrl) {
-          const { data: chatData } = await axios.get(`http://localhost:5005/api/chat/threads?userId=${userId}`);
+          const { data: chatData } = await axios.get(`${API_URL}/api/chat/threads?userId=${userId}`);
           const found = chatData.find(c => c._id === activeChatId);
           targetUrl = found?.url;
           if (found) setChatMeta(found);
         }
         if (!targetUrl) { setIsTyping(false); return; }
 
-        await axios.post(`http://localhost:5005/api/chat/thread/${currentChatId}/message`, { type: 'user', content: finalInput });
-        await axios.post(`http://localhost:5005/api/chat/thread/${currentChatId}/message`, { type: 'system', content: 'Rescan Initiated' });
-        const { data: scanData } = await axios.post('http://localhost:5005/api/scan', {
+        await axios.post(`${API_URL}/api/chat/thread/${currentChatId}/message`, { type: 'user', content: finalInput });
+        await axios.post(`${API_URL}/api/chat/thread/${currentChatId}/message`, { type: 'system', content: 'Rescan Initiated' });
+        const { data: scanData } = await axios.post(`${API_URL}/api/scan`, {
           url: targetUrl, userId, force: true, chatId: currentChatId,
           scope: scanParams.scope, mode: scanParams.mode, tests: scanParams.tests
         });
@@ -399,7 +400,7 @@ const ChatInterface = ({
 
     try {
       const latestReport = [...messages].reverse().find(m => m.type === 'report' || m.type === 'rescan');
-      const { data } = await axios.post(`http://localhost:5005/api/chat/thread/${currentChatId}/ask`, {
+      const { data } = await axios.post(`${API_URL}/api/chat/thread/${currentChatId}/ask`, {
         message: finalInput,
         scanReportId: manualReportId || latestReport?.scanReportId || null
       });

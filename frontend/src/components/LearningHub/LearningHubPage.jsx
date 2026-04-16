@@ -1,3 +1,4 @@
+import { API_URL, SOCKET_URL } from '../../config/api';
 import React, { useState, useMemo } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -58,7 +59,7 @@ const LearningHubPage = () => {
     setIsAiLoading(true);
     setAiResponse(null);
     try {
-      const { data } = await axios.post('http://localhost:5005/api/learning/ask', { question: aiInput });
+      const { data } = await axios.post(`${API_URL}/api/learning/ask`, { question: aiInput });
       setAiResponse(data);
       setAiInput('');
     } catch (e) {

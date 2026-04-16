@@ -1,3 +1,4 @@
+import { API_URL, SOCKET_URL } from '../config/api';
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -396,7 +397,7 @@ const ReportDetail = ({ reportId, onBack, onRefresh, onReScan, onDeleted, confir
     }
   }, [activeTab]);
 
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5005';
+  const API_BASE = import.meta.env.VITE_API_URL || `${API_URL}`;
 
   useEffect(() => {
     let intervalId = null;

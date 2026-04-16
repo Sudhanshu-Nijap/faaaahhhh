@@ -1,3 +1,4 @@
+import { API_URL, SOCKET_URL } from '../config/api';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Calendar, Clock, Zap, Activity, Globe, Loader2 } from 'lucide-react';
@@ -27,7 +28,7 @@ const AddJobModal = ({ isOpen, onClose, initialUrl = '', setAlert }) => {
         setLoading(true);
         try {
             const userId = localStorage.getItem('userId');
-            await axios.post('http://localhost:5005/api/scheduling/jobs', {
+            await axios.post(`${API_URL}/api/scheduling/jobs`, {
                 ...schedule,
                 url: normalizedUrl,
                 userId
