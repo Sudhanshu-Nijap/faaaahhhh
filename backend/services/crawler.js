@@ -84,12 +84,12 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
             visited.add(url);
 
             try {
-                // Adaptive SPA Wait: Use 'load' and increased timeout for Vercel/Next.js hydration
-                await page.goto(url, { waitUntil: 'load', timeout: 25000 });
+                // Adaptive Navigation: Start with 'domcontentloaded' for speed in link discovery
+                // If it fails, we catch it and move on rather than blocking the whole crawl.
+                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
                 
-                // --- Hydration Cooldown (V1) ---
-                // Wait for SPA dynamic link generation
-                await page.waitForTimeout(1500);
+                // Optional wait for hydration if it's an SPA
+                await page.waitForTimeout(1000).catch(() => {});
                 
                 internalPages.add(url);
                 progress(10, `Hydration Stabilized: Scanned ${new URL(url).pathname}`);

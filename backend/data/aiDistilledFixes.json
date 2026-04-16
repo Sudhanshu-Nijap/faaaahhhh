@@ -52,5 +52,53 @@
     "fixSummary": "**Inaccessible Buttons Remediation Plan**\n=====================================\n\n**Critical Finding:** Inaccessible Buttons\n--------------------------------------\n\n### Root Cause\n\nThe buttons on the Google homepage are not accessible due to missing or incomplete ARIA attributes, which are essential for screen readers and other assistive technologies to understand the button's purpose and functionality.\n\n### The Fix\n\nTo make the buttons accessible, we need to add the following ARIA attributes:\n\n*",
     "timestamp": "2026-04-14T05:46:57.053Z",
     "status": "pending-review"
+  },
+  {
+    "query": "Analyze this finding from the report: Small touch target detected",
+    "fixSummary": "**Diagnostic Report: Small Touch Target Detected**\n\n### Root Cause\nThe root cause of this issue is a touch target size that is less than the recommended 44x44px for optimal mobile UX. This can lead to user error rates on smaller viewports.\n\n### The Fix\nTo fix this issue, we need to increase the size of the touch target. We can do this by adding CSS styles to the affected element.\n\n```css\n/* Add this CSS to increase the touch target size */\na {\n  padding: 12px 24px;\n  min-width: 44px;\n  min-heigh",
+    "timestamp": "2026-04-15T03:25:26.002Z",
+    "status": "pending-review"
+  },
+  {
+    "query": "Analyze this finding from the report: Small touch target detected",
+    "fixSummary": "**Diagnostic Report: Small Touch Target Detected**\n\n### Root Cause\nThe root cause of this issue is that the touch target size for the element `<a href=\\\"/\\\" data-discover=\\\"true\\\"><span class=\\\"font-bold transition-colors duration-300 text-white\\\">Sudhanshu Nijap</span></a>` is smaller than the recommended minimum size of 44x44px for optimal mobile UX.\n\n### The Fix\nTo fix this issue, we need to increase the touch target size to at least 44x44px. We can achieve this by adding the following CSS st",
+    "timestamp": "2026-04-15T03:25:26.304Z",
+    "status": "pending-review"
+  },
+  {
+    "query": "Analyze this finding from the report: Background and foreground colors do not have a sufficient contrast ratio.",
+    "fixSummary": "**Accessibility Issue: Insufficient Color Contrast**\n==============================================\n\n### Root Cause\n\nThe root cause of this issue is the lack of sufficient contrast between the background and foreground colors, making it difficult or impossible for users with visual impairments to read the content.\n\n### The Fix\n\nTo fix this issue, we need to ensure that the background and foreground colors have a sufficient contrast ratio. We can use the Web Content Accessibility Guidelines (WCAG",
+    "timestamp": "2026-04-15T05:11:56.979Z",
+    "status": "pending-review"
+  },
+  {
+    "query": "Analyze this finding from the report: Background and foreground colors do not have a sufficient contrast ratio.",
+    "fixSummary": "**Accessibility Issue: Insufficient Color Contrast**\n==============================================\n\n### Root Cause\n\nThe root cause of this issue is the lack of sufficient contrast between the background and foreground colors. This makes it difficult or impossible for users with visual impairments to read the text.\n\n### The Fix\n\nTo fix this issue, we need to ensure that the background and foreground colors have a sufficient contrast ratio. We can use the Web Content Accessibility Guidelines (WCA",
+    "timestamp": "2026-04-15T05:11:57.501Z",
+    "status": "pending-review"
+  },
+  {
+    "query": "Analyze this finding from the report: https://patilprathameshportfolio.com/blogpost.html",
+    "fixSummary": "**Diagnostic Report: https://patilprathameshportfolio.com/blogpost.html**\n\n### Issue: 404 Not Found Error\n\n#### Root Cause\nThe root cause of this issue is a non-existent resource at the specified URL (`https://patilprathameshportfolio.com/blogpost.html`). This results in a 404 Not Found HTTP status code being returned to the client.\n\n#### The Fix\n\nTo resolve this issue, we need to either create the resource at the specified URL or remove the link to it. Here's an example of how to create a basic",
+    "timestamp": "2026-04-15T05:39:02.886Z",
+    "status": "pending-review"
+  },
+  {
+    "query": "Analyze this finding from the report: https://patilprathameshportfolio.com/blogpost.html",
+    "fixSummary": "**404 Not Found Error Analysis**\n=====================================\n\n### Issue: 404 Not Found Error on Blog Post Link\n\n#### Root Cause\nThe root cause of this issue is a broken link to the blog post page (`https://patilprathameshportfolio.com/blogpost.html`). This link is not found on the server, resulting in a 404 Not Found error.\n\n#### The Fix\nTo fix this issue, we need to either update the link to point to a valid blog post page or remove the link altogether.\n\n```javascript\n// Remove the br",
+    "timestamp": "2026-04-15T05:39:02.903Z",
+    "status": "pending-review"
+  },
+  {
+    "query": "Deep dive into this High finding: Firebase Permission Error. Give me a detailed remediation plan.",
+    "fixSummary": "**Firebase Permission Error Remediation Plan**\n=====================================================\n\n### **Root Cause**\n----------------\n\nThe Firebase Permission Error is caused by a missing or insufficient permission in the Firestore database. This error occurs when the Firebase SDK attempts to read or write data to the database, but the user's credentials do not have the necessary permissions.\n\n### **The Fix**\n-------------\n\nTo resolve this issue, you need to ensure that the user's credential",
+    "timestamp": "2026-04-16T18:50:01.139Z",
+    "status": "pending-review"
+  },
+  {
+    "query": "Deep dive into this High finding: Firebase Permission Error. Give me a detailed remediation plan.",
+    "fixSummary": "**Firebase Permission Error Remediation Plan**\n=====================================================\n\n### Root Cause\n---------------\n\nThe root cause of the Firebase Permission Error is a missing or insufficient permission to access the Firestore database. This error occurs when the Firebase SDK is unable to read or write data to the Firestore database due to a lack of permission.\n\n### The Fix\n------------\n\nTo resolve this issue, you need to ensure that the Firebase SDK has the necessary permissi",
+    "timestamp": "2026-04-16T18:50:01.599Z",
+    "status": "pending-review"
   }
 ]

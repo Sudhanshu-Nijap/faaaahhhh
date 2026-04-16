@@ -16,15 +16,22 @@ const qaAgent = require('../services/qaAgent');
 const scanEngine = require('../services/scanEngine');
 const comparisonService = require('../services/comparisonService');
 
-// 3. Connection Substrate Logic
-const connectWithRetry = async () => {
+// 3. Connection Substrate Logic (Hardened)
+const connectWithRetry = async (attempts = 0) => {
+    const MAX_ATTEMPTS = 5;
     try {
-        await mongoose.connect(process.env.MONGODB_URI);
+        await mongoose.connect(process.env.MONGODB_URI, {
+            serverSelectionTimeoutMS: 15000, // Fail fast (15s) if DNS/Host is unreachable
+        });
         console.log('[Worker]: Connected to Tactical Database');
     } catch (err) {
-        console.error('[Worker]: DB Initial connection failed. Retrying in 2s...', err.message);
-        await new Promise(res => setTimeout(res, 2000));
-        return connectWithRetry();
+        if (attempts >= MAX_ATTEMPTS) {
+            console.error('[Worker]: Critical DB Failure: Max retries exceeded. Aborting scan.');
+            throw new Error(`Database connection timed out after ${MAX_ATTEMPTS} attempts.`);
+        }
+        console.warn(`[Worker]: DB connection attempt ${attempts + 1} failed. Retrying in 5s...`, err.message);
+        await new Promise(res => setTimeout(res, 5000));
+        return connectWithRetry(attempts + 1);
     }
 };
 
@@ -234,8 +241,9 @@ async function runMasterOrchestrator(data) {
             }
         }
         
+        console.log(`[MasterWorker]: Scan Cycle Optimized. Report ${reportId} is fully materialized.`);
         emitProgress(100, 'Strategic Evolution Complete.');
-        parentPort.postMessage({ type: 'completed' });
+        parentPort.postMessage({ type: 'completed', reportId: reportId });
         return;
 
     } catch (error) {
@@ -246,16 +254,23 @@ async function runMasterOrchestrator(data) {
     }
 }
 
-// ── Deadlock Watchdog (5m cutoff) ──────────────────────────────────────────
+// ── Deadlock Watchdog (Adaptive Cutoff) ──────────────────────────────────────
+const SCOPE_TIMEOUTS = {
+    'single': 300000,   // 5 minutes
+    'site': 1200000     // 20 minutes (for multi-page scans)
+};
+
+const timeoutMs = SCOPE_TIMEOUTS[workerData.scope] || 300000;
+
 const watchdog = setTimeout(async () => {
     console.error(`[MasterWorker]: Neural Watchdog Triggered for ${workerData.reportId}. Force terminating...`);
     await ScanReport.findByIdAndUpdate(workerData.reportId, { 
         status: 'failed', 
-        customName: 'Scan timed out after 5m of inactivity.' 
+        customName: `Scan timed out after ${Math.round(timeoutMs/60000)}m of inactivity.` 
     });
     parentPort.postMessage({ type: 'failed', error: 'Neural substrate timeout' });
     process.exit(1);
-}, 300000); // 5 minutes
+}, timeoutMs); 
 
 // Start immediately with connection synchronization
 connectWithRetry().then(() => {

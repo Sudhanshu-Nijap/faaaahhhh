@@ -120,14 +120,18 @@ const scanUI = async (page) => {
             
             // Capture a safe snippet of the offending element
             let htmlSnippet = 'UNAVAILABLE';
+            let rect = { x: 0, y: 0, width: 0, height: 0 };
             try {
                 htmlSnippet = item.outerHTML?.substring(0, 500);
+                const r = item.getBoundingClientRect();
+                rect = { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
             } catch (e) {}
 
             issues.push({
                 ...issueObj,
                 location: getSpatialContext(item),
                 htmlSnippet: htmlSnippet,
+                rect: rect,
                 timestamp: new Date().toISOString()
             });
         };
@@ -218,7 +222,7 @@ const neuralScroll = async (page) => {
                     window.scrollTo(0, 0);
                     resolve();
                 }
-            }, 100);
+            }, 50);
         });
     });
     await new Promise(res => setTimeout(res, 500));
@@ -337,7 +341,7 @@ const runSinglePageScan = async (reportId, url, scannedModules = [], emitProgres
         const startTime = Date.now();
         console.log(`[scanEngine]: Initializing Ghost-Protocol Level 2 navigation for ${url}...`);
         
-        const jitter = 800 + Math.floor(Math.random() * 1500);
+        const jitter = 200 + Math.floor(Math.random() * 600);
         await new Promise(res => setTimeout(res, jitter));
 
         try {
@@ -479,7 +483,7 @@ const runTargetedCrawlScan = async (reportId, url, tests, emitProgress, scope = 
     
     const pages = await crawler.crawlWebsite(reportId, url, emitProgress, { 
         scope: scope,
-        maxPages: scope === 'site' ? 20 : 1, 
+        maxPages: scope === 'site' ? 8 : 1, 
         maxDepth: scope === 'site' ? 2 : 0 
     });
     
@@ -499,7 +503,7 @@ const runTargetedCrawlScan = async (reportId, url, tests, emitProgress, scope = 
     };
 
     if (pagesToAudit.length > 0) {
-        const batchSize = 3; 
+        const batchSize = 5; // Optimized for high-throughput concurrency
         for (let i = 0; i < pagesToAudit.length; i += batchSize) {
             const batch = pagesToAudit.slice(i, i + batchSize);
             
@@ -510,14 +514,19 @@ const runTargetedCrawlScan = async (reportId, url, tests, emitProgress, scope = 
                 await new Promise(r => setTimeout(r, batchIdx * 600));
                 
                 const isMainPage = normalizeUrl(pageUrl) === normalizeUrl(url);
-                const activeTests = isMainPage ? tests : tests.filter(t => t !== 'lighthouse');
+                // LEAN AUDIT PROTOCOL: Sub-pages skip heavy modules for speed
+                const activeTests = isMainPage ? tests : tests.filter(t => !['lighthouse', 'forms', 'accessibility'].includes(t));
                 
                 const onPageProgress = (percent, message) => {
                     const totalProgress = Math.round(((globalIdx / pagesToAudit.length) * 100) + (percent / pagesToAudit.length));
                     emitProgress(totalProgress, `[Warp-Drive] Node ${globalIdx+1}/${pagesToAudit.length}: ${message}`);
                 };
 
-                const result = await runSinglePageScan(reportId, pageUrl, activeTests, onPageProgress, sessionAtlas).catch(err => {
+                const result = await withTimeout(
+                    runSinglePageScan(reportId, pageUrl, activeTests, onPageProgress, sessionAtlas),
+                    90000, 
+                    `Node Audit (${pageUrl})`
+                ).catch(err => {
                     console.error(`[scanEngine]: Warp-Drive Node Failure (${pageUrl}): ${err.message}`);
                     return null;
                 });
@@ -527,7 +536,9 @@ const runTargetedCrawlScan = async (reportId, url, tests, emitProgress, scope = 
                     siteLogs.networkLogs.push(...result.networkLogs);
                     siteLogs.uiIssues.push(...result.uiIssues);
                     siteLogs.formIssues.push(...result.formIssues);
-                    siteLogs.screenshots.push(result.screenshot);
+                    if (result.screenshot) {
+                        siteLogs.screenshots.push(result.screenshot);
+                    }
                     siteLogs.metrics.totalSize += result.totalSize;
                     siteLogs.metrics.loadTime = Math.max(siteLogs.metrics.loadTime, result.loadTime);
                     siteLogs.metrics.requestCount += result.requestCount;
@@ -586,7 +597,7 @@ const persistScanData = async (reportId, results) => {
             accessibilityIssues: (results.accessibilityIssues || []).slice(0, 100),
             lighthouseScores: results.lighthouseScores,
             networkLogs: (results.networkLogs || []).slice(0, 200),
-            screenshots: results.screenshots || (results.screenshot ? [results.screenshot] : []),
+            screenshots: (results.screenshots && results.screenshots.length > 0) ? results.screenshots : (results.screenshot ? [results.screenshot] : []),
             'performanceMetrics.loadTime': results.loadTime,
             'performanceMetrics.pageSize': results.totalSize,
             'performanceMetrics.requestCount': results.requestCount
@@ -622,7 +633,7 @@ const crawlPages = async (url, options = {}) => {
 async function neuralDrift(page) {
     try {
         const { width, height } = page.viewportSize();
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 1; i++) {
             const x = Math.floor(Math.random() * width);
             const y = Math.floor(Math.random() * height);
             await page.mouse.move(x, y, { steps: 15 });

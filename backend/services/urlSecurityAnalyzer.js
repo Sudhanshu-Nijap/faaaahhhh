@@ -97,13 +97,13 @@ async function analyzeURLSecurity(urlString) {
                     blocked: true,
                     riskLevel: "critical",
                     reason: "Malware or phishing detected",
-                    source: "Google Safe Browsing"
+                    explanation: "This URL has been flagged by global threat intelligence as a source of malware or social engineering (phishing)."
                 };
                 cache.set(normalizedUrl, { timestamp: Date.now(), verdict: blockVerdict });
                 return blockVerdict;
             }
         } catch (sbError) {
-            console.error("[URL Security Analyzer]: Google SB Error:", sbError.message);
+            console.error("[URL Security Analyzer]: Security Check Error:", sbError.message);
         }
 
         // 4. AI Risk Classification via Groq (Enhanced Prompt)
@@ -133,8 +133,8 @@ async function analyzeURLSecurity(urlString) {
                     const blockVerdict = {
                         blocked: true,
                         riskLevel: "high",
-                        reason: aiResult.reason || "AI detected high risk/mimicry",
-                        source: "Groq AI"
+                        reason: "AI risk classification",
+                        explanation: aiResult.reason || "AI detected high risk/mimicry"
                     };
                     cache.set(normalizedUrl, { timestamp: Date.now(), verdict: blockVerdict });
                     return blockVerdict;

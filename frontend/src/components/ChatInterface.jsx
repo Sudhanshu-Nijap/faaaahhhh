@@ -163,6 +163,7 @@ const ChatInterface = ({
   const [showSensors, setShowSensors] = useState(false);
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
+  const hasDispatchedRef = useRef(false);
 
   // ── Socket Infrastructure ────────────────────────────────────────────────────
   useEffect(() => {
@@ -195,11 +196,19 @@ const ChatInterface = ({
     };
   }, [activeChatId]);
 
-  // Handle pending message from parent (e.g. redirected from report view)
   useEffect(() => {
     if (pendingMessage && (activeChatId || pendingReportId)) {
+       // Prevent double-dispatch during component sync / re-mount
+       if (hasDispatchedRef.current === pendingMessage) return;
+       hasDispatchedRef.current = pendingMessage;
+       
        handleSend(null, pendingMessage, pendingReportId);
        if (onMessageConsumed) onMessageConsumed();
+    }
+    
+    // Reset guard if pending message is cleared
+    if (!pendingMessage) {
+      hasDispatchedRef.current = false;
     }
   }, [pendingMessage, activeChatId, pendingReportId]);
 
@@ -326,11 +335,23 @@ const ChatInterface = ({
         setIsScanning(true);
         if (scanData.reportId) onScanStarted(scanData.reportId, chatId);
       } catch (err) {
-        setMessages(prev => [...prev, {
-          _id: 'err-' + Date.now(), type: 'system',
-          content: 'Scan launch failed: ' + (err.response?.data?.error || err.message),
-          createdAt: new Date()
-        }]);
+        const errMsg = err.response?.data?.error || err.message;
+        
+        if (errMsg.includes('Security Block')) {
+          // Extract just the high-level status (e.g., "Security Block [HIGH]")
+          const highLevel = errMsg.split(' - ')[0] || "Security Block Detected";
+          setMessages(prev => [...prev, {
+            _id: 'err-' + Date.now(), type: 'system',
+            content: highLevel.toUpperCase(),
+            createdAt: new Date()
+          }]);
+        } else {
+          setMessages(prev => [...prev, {
+            _id: 'err-' + Date.now(), type: 'system',
+            content: 'Scan launch failed: ' + errMsg,
+            createdAt: new Date()
+          }]);
+        }
       } finally {
         setIsTyping(false);
       }

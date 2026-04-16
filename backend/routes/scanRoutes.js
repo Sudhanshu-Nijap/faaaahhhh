@@ -30,13 +30,49 @@ router.post('/scan', async (req, res) => {
     try { new URL(url); }
     catch (e) { return res.status(400).json({ error: 'Invalid URL format.' }); }
 
-    // INTEGRATION POINT: FAST URL Security Analyzer (Non-Blocking Mode)
+    // INTEGRATION POINT: FAST URL Security Analyzer (Blocking Mode)
     const verdict = await analyzeURLSecurity(url);
-    if (verdict.blocked && verdict.riskLevel === 'critical') {
-        // Only block for absolute technical risks (SSRF, local exploits)
-        const shortExplanation = `Security Block [CRITICAL] - ${verdict.reason}. ${verdict.explanation || verdict.source || ''}`;
-        return res.status(400).json({ error: shortExplanation });
+    if (verdict.blocked) {
+        console.error(`[Security Gateway]: Neural Link Blocked for ${url}. Risk: ${verdict.riskLevel.toUpperCase()}`);
+        const shortExplanation = `Security Block [${verdict.riskLevel.toUpperCase()}] - ${verdict.reason}. ${verdict.explanation || ''}`;
+        
+        // Notify chat if context exists
+        if (chatId) {
+            try {
+                const Message = require('../models/Message');
+                const Chat = require('../models/Chat');
+                const msg = await Message.create({
+                    chatId: chatId,
+                    type: 'ai',
+                    content: `⚠️ **Security Neural Link Blocked**\n\n${verdict.explanation || verdict.reason || "Suspicious morphology detected."}`,
+                    metadata: { 
+                        riskLevel: verdict.riskLevel,
+                        reason: verdict.reason,
+                        status: 'blocked'
+                    }
+                });
+                
+                // Update chat timestamp for sorting
+                await Chat.findByIdAndUpdate(chatId, { lastMessageAt: new Date() });
+                
+                if (global.io) {
+                    global.io.to(chatId.toString()).emit('new-message', msg);
+                }
+            } catch (e) {
+                console.error('Failed to persist security block message:', e.message);
+            }
+        }
+        
+        // Return 400 but ensure frontend can display the payload
+        return res.status(400).json({ 
+            error: shortExplanation, 
+            blocked: true, 
+            riskLevel: verdict.riskLevel 
+        });
     }
+
+    // LEGIT URL CASE: Proceed to scan...
+    console.log(`[Security Gateway]: Neural Link Verified for ${url}. Risk: LOW`);
 
     // Provide the short explanation to the chat UI for successful verification
     if (chatId) {
@@ -429,10 +465,13 @@ async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = f
         workerData: { reportId: reportId.toString(), baseUrl, chaosIntensity, singlePageOnly, tests, scope, mode, chatId: chatId ? chatId.toString() : null, prevReportId: prevReportId?.toString() }
     });
 
+    console.log(`[Worker Lifecycle]: Spawned background process for Report ${reportId} (Thread ID: ${worker.threadId || 'Main Inheritance'})`);
+
     activeWorkers.set(reportId.toString(), worker);
 
     worker.on('message', (msg) => {
         if (msg.type === 'progress') {
+            console.log(`[Worker Lifecycle]: Progress Update [Report: ${reportId}] -> ${msg.percent}%: ${msg.stage}`);
             if (global.io) {
                 global.io.to(reportId.toString()).emit('scan-progress', {
                     reportId: reportId.toString(),
@@ -445,6 +484,17 @@ async function runFullScan(reportId, baseUrl, chaosIntensity, singlePageOnly = f
         if (msg.type === 'new-message') {
             if (global.io) {
                 global.io.to(msg.message.chatId.toString()).emit('new-message', msg.message);
+            }
+        }
+        if (msg.type === 'completed') {
+            if (global.io) {
+                global.io.to(reportId.toString()).emit('scan-progress', {
+                    reportId: reportId.toString(),
+                    percent: 100,
+                    stage: 'Scan complete.',
+                    status: 'completed',
+                    finalReportId: msg.reportId || reportId.toString()
+                });
             }
         }
         if (msg.type === 'failed') {

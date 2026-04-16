@@ -32,11 +32,17 @@ const scanForms = async (page) => {
             const method = (form.getAttribute('method') || 'GET').toUpperCase();
             const inputs = Array.from(form.querySelectorAll('input, select, textarea'));
             
-            const addIssue = (issueObj) => {
+            const addIssue = (issueObj, element) => {
                 const hash = `${issueObj.type}-${issueObj.issue || ''}-${issueObj.field || ''}`;
                 // Only deduplicate within the same page context if they are identical
                 if (!seenIssues.has(hash)) {
-                    issues.push({ ...issueObj, form: formId, location: formTitle });
+                    let rect = { x: 0, y: 0, width: 0, height: 0 };
+                    try {
+                        const r = (element || form).getBoundingClientRect();
+                        rect = { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+                    } catch (e) {}
+
+                    issues.push({ ...issueObj, form: formId, location: formTitle, rect: rect });
                     seenIssues.add(hash);
                 }
             };
@@ -49,7 +55,7 @@ const scanForms = async (page) => {
                     issue: 'Sensitive data transmitted via GET',
                     severity: 'Critical',
                     recommendation: 'Change form method to POST. GET parameters are visible in URLs and server logs.'
-                });
+                }, form);
             }
 
             // Loophole: Insecure Submission (Mixed Content)
@@ -59,7 +65,7 @@ const scanForms = async (page) => {
                     issue: 'Insecure form submission (HTTP)',
                     severity: 'High',
                     recommendation: 'Update form action to use HTTPS to prevent credential interception.'
-                });
+                }, form);
             }
 
             // Loophole: Validation Bypass
@@ -69,7 +75,7 @@ const scanForms = async (page) => {
                     issue: 'Browser validation bypassed (novalidate)',
                     severity: 'Medium',
                     recommendation: 'Remove "novalidate" unless implementing custom high-fidelity JS validation.'
-                });
+                }, form);
             }
 
             if (!action || action === '#' || action === '') {
@@ -78,7 +84,7 @@ const scanForms = async (page) => {
                     issue: 'Form missing valid action endpoint',
                     severity: 'Medium',
                     recommendation: 'Define a valid server-side endpoint in the action attribute.'
-                });
+                }, form);
             }
 
             const hasSubmit = form.querySelector('button[type=\"submit\"], input[type=\"submit\"]');
@@ -88,7 +94,7 @@ const scanForms = async (page) => {
                     issue: 'Form missing explicit submit trigger',
                     severity: 'Low',
                     recommendation: 'Add a <button type=\"submit\"> for better accessibility and predictable submission.'
-                });
+                }, form);
             }
 
             // --- Per-Input Audit (Scoped to this form only) ---
@@ -108,7 +114,7 @@ const scanForms = async (page) => {
                             severity: 'Medium',
                             field: name,
                             recommendation: 'Associate a <label> or add an aria-label to ensure screen reader compatibility.'
-                        });
+                        }, input);
                     }
                 }
 
@@ -122,7 +128,7 @@ const scanForms = async (page) => {
                             severity: 'Low',
                             field: name,
                             recommendation: 'Set autocomplete=\"off\" or \"new-password\" for sensitive user data.'
-                        });
+                        }, input);
                     }
                 }
             });

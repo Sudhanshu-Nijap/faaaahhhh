@@ -1,5 +1,6 @@
 const Job = require('../models/Job');
-const { runFullScan } = require('../routes/scanRoutes');
+// Circular Dependency Shield: runFullScan is required inside executive methods
+// instead of top-level to prevent server startup deadlocks.
 const ScanReport = require('../models/ScanReport');
 const Chat = require('../models/Chat');
 
@@ -137,7 +138,9 @@ class SchedulerService {
             });
             await report.save();
 
+            // ── SOCKET EMISSION ──────────────────────────────────────────
             // Run scan async via existing worker infrastructure
+            const { runFullScan } = require('../routes/scanRoutes');
             runFullScan(
                 report._id, 
                 job.url, 

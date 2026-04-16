@@ -183,6 +183,14 @@ function App() {
         if (data.status === 'completed' || data.status === 'failed') {
           localStorage.removeItem('sentinel_pending_progress');
           localStorage.removeItem('sentinel_live_report_id');
+          
+          if (data.status === 'completed' && data.finalReportId) {
+            console.log('[App]: Scan complete. Delaying dashboard engagement for chat card visibility...');
+            setTimeout(() => {
+              setViewingReportId(data.finalReportId);
+            }, 2500); // 2.5s window for chat card to render
+          }
+          
           setRefreshKey(prev => prev + 1);
           setTimeout(() => setScanProgress(null), 5000);
         }
