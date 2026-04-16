@@ -58,8 +58,8 @@
   --eu-status-warn: var(--eu-accent);
 
   --eu-bg-card-glass: #121216;
-  --eu-bg-modal: rgba(10, 10, 15, 0.2);
-  --eu-bg-overlay-modal: rgba(0, 0, 0, 0.1);
+  --eu-bg-modal: rgba(14, 14, 18, 0.85);
+  --eu-bg-overlay-modal: rgba(0, 0, 0, 0.6);
   --eu-hover-bg: rgba(var(--eu-accent-rgb), 0.1);
   --eu-hover-text: var(--eu-accent);
   --eu-transition-cinematic: background-color 0.8s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.5s ease, background-image 0.5s ease;
@@ -179,8 +179,8 @@ html[data-theme='light'] .dreamy-blob {
 
 .glass-overlay {
   background: var(--eu-bg-overlay-modal);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
 }
 
 .glass-node {
