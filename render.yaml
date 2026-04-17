@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: sentinel-backend
+    env: docker
+    repo: https://github.com/Sudhanshu-Nijap/sentinal_QA
+    branch: Sudhanshu
+    rootDir: backend
+    plan: starter
+    healthCheckPath: /status
+    envVars:
+      - key: PORT
+        value: 5005
+      - key: MONGODB_URI
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
+      - key: N8N_WEBHOOK_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_CHAT_API_KEY
+        sync: false
+      - key: GROQ_QA_API_KEY
+        sync: false
+      - key: GOOGLE_SB_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
