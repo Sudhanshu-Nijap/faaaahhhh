@@ -15,6 +15,8 @@ const qaScanner = require('../services/qaScanner');
 const qaAgent = require('../services/qaAgent');
 const scanEngine = require('../services/scanEngine');
 const comparisonService = require('../services/comparisonService');
+const linkGuardian = require('../services/linkGuardian');
+const axios = require('axios');
 
 // 3. Connection Substrate Logic (Hardened)
 const connectWithRetry = async (attempts = 0) => {
@@ -95,7 +97,8 @@ const calculateReportHealth = (report, lhMetrics = null) => {
         links: report.brokenLinks?.length || 0,
         console: report.consoleErrors?.length || 0,
         ui: (report.uiIssues?.length || 0) + (report.responsiveIssues?.length || 0),
-        accessibility: report.accessibilityIssues?.length || 0
+        accessibility: report.accessibilityIssues?.length || 0,
+        security: report.securityIssues?.length || 0
     };
     
     const rawDeduction = Object.keys(weights).reduce((acc, key) => acc + (counts[key] * weights[key] || 0), 0);
@@ -175,11 +178,9 @@ async function runMasterOrchestrator(data) {
         emitProgress(92, 'Syncing Final AI Analysis...');
         const { prevReportId } = data;
 
-        // Parallel Fetch for current and baseline reports
-        const [currentReport, previousReport] = await Promise.all([
-            ScanReport.findById(reportId),
-            prevReportId ? ScanReport.findById(prevReportId) : Promise.resolve(null)
-        ]);
+        // CRITICAL SYNC: Re-fetch currentReport to capture all async security telemetry
+        const currentReport = await ScanReport.findById(reportId);
+        const previousReport = prevReportId ? await ScanReport.findById(prevReportId) : null;
 
         if (!currentReport) throw new Error('Neural focus lost: Report not found during synthesis.');
 
@@ -224,7 +225,8 @@ async function runMasterOrchestrator(data) {
                     brokenLinks: finalReport?.brokenLinks?.length || 0,
                     consoleErrors: finalReport?.consoleErrors?.length || 0,
                     accessibilityIssues: finalReport?.accessibilityIssues?.length || 0,
-                    networkIssues: finalReport?.networkLogs?.length || 0
+                    networkIssues: finalReport?.networkLogs?.length || 0,
+                    securityIssues: finalReport?.securityIssues?.length || 0
                 },
                 comparison: comparison?.previousReportId ? {
                     previousReportId: comparison.previousReportId,

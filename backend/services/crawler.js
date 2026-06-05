@@ -2,6 +2,8 @@ const { chromium } = require('playwright');
 const ScanReport = require('../models/ScanReport');
 const axios = require('axios');
 const path = require('path');
+const linkGuardian = require('./linkGuardian');
+const scriptGuardian = require('./scriptGuardian');
 
 /**
  * crawlWebsite - Universal Crawler with Discovery Constraints
@@ -14,6 +16,7 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
     // Use a Map to track the source page for each link to provide better context
     const linkSourceMap = new Map(); 
     const brokenLinks = [];
+    const securityIssues = [];
     
     const scope = options.scope || 'single';
     const maxPages = scope === 'site' ? (options.maxPages || 50) : 1;
@@ -32,7 +35,25 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
         return [baseUrl];
     }
 
-    progress(7, `Initializing crawl for ${domain}...`);
+    progress(7, `Initializing diagnostics for ${domain}...`);
+
+    // ─── Phase 0: Pre-flight Reachability ─────────────────
+    // (Security Pattern for baseUrl is handled by Master Worker for deduplication)
+
+    try {
+        progress(8, `Probing host reachability...`);
+        await axios.get(baseUrl, { 
+            timeout: 5000, 
+            headers: { 'User-Agent': 'Sentinel-Safe-Probe/1.0' },
+            validateStatus: () => true 
+        });
+    } catch (e) {
+        console.warn(`[Crawler]: Host ${domain} appears offline. Skipping browser scan.`);
+        progress(10, "Target host is unreachable. Finalizing telemetry...");
+        
+        // Return only baseUrl since we're offline
+        return [baseUrl];
+    }
 
     let browser;
     try {
@@ -107,6 +128,13 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
                         .map(a => a.href)
                         .filter(h => h.startsWith('http') && !h.includes('#') && !h.includes('mailto:') && !h.includes('tel:'))
                 );
+                
+                // --- NEW: Script Source Extraction ---
+                const scriptUrls = await page.evaluate(() => 
+                    Array.from(document.querySelectorAll('script[src]'))
+                        .map(s => s.src)
+                        .filter(src => src.startsWith('http'))
+                );
 
                 links.forEach(link => {
                     if (!linkSourceMap.has(link)) {
@@ -175,6 +203,19 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
 
                     const isBroken = status === 0 || status === 404 || status === 410 || (status >= 500 && !isExternal);
 
+                    // --- NEW: LinkGuardian AI Analysis ---
+                    const securityCheck = linkGuardian.analyze(link);
+                    if (securityCheck.isMalicious) {
+                        securityIssues.push({
+                            page: baseUrl,
+                            issue: `Malicious Link Detected: ${securityCheck.threatType}`,
+                            link: link,
+                            severity: 'Critical',
+                            reason: securityCheck.reason,
+                            suggestedFix: `Remove or replace this link immediately. It matches high-risk phishing or malware distribution patterns (${securityCheck.riskScore}% risk confidence).`
+                        });
+                    }
+
                     if (isBroken) {
                         brokenLinks.push({
                             page: linkSourceMap.get(link) || baseUrl,
@@ -194,8 +235,15 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
     }
 
         const update = { $set: { pagesCrawled: internalPages.size, siteStructure: structure } };
+        
         if (brokenLinks.length > 0) {
             update.$push = { brokenLinks: { $each: brokenLinks } };
+        }
+
+        if (securityIssues.length > 0) {
+            update.$push = update.$push || {};
+            update.$push.securityIssues = { $each: securityIssues };
+            console.log(`[Crawler]: ${securityIssues.length} malicious links detected.`);
         }
 
         await ScanReport.findByIdAndUpdate(reportId, update);

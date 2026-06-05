@@ -1,6 +1,7 @@
 const { Groq } = require('groq-sdk');
 const fs = require('fs');
 const path = require('path');
+const linkGuardian = require('./linkGuardian');
 
 class ChatAgent {
     constructor() {
@@ -91,8 +92,22 @@ class ChatAgent {
             }
         }
 
-        // --- LAYER 2: Filter Layer (Type B/C - Grounded RAG Extraction) ---
+        // --- LAYER 2: Filter Layer (URL Safety & Grounded RAG Extraction) ---
         const context = { url: reportData.url };
+        
+        // --- NEW: Malicious Link Detection ---
+        const urlMatch = message.match(/https?:\/\/[^\s]+/g);
+        if (urlMatch) {
+            const securityResults = urlMatch.map(u => linkGuardian.analyze(u)).filter(r => r.isMalicious);
+            if (securityResults.length > 0) {
+                context.malicious_links_detected_in_query = securityResults.map(r => ({
+                    url: r.url,
+                    threat: r.threatType,
+                    risk: `${r.riskScore}%`,
+                    reason: r.reason
+                }));
+            }
+        }
         
         // 1. Surgical RAG: Extract issues exactly mentioned in chat
         const allIssues = [
