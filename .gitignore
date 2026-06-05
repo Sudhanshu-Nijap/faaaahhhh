@@ -12,3 +12,5 @@ dist/
 build/
 screenshots/
 reports/
+.vercel
+.env*.local

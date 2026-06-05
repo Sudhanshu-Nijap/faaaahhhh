@@ -84,12 +84,13 @@ const crawlWebsite = async (reportId, baseUrl, emitProgress, options = {}) => {
             visited.add(url);
 
             try {
-                // Adaptive Navigation: Start with 'domcontentloaded' for speed in link discovery
-                // If it fails, we catch it and move on rather than blocking the whole crawl.
-                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                // Tactical Navigation: Wait for 'commit' to bypass WAF hangs (e.g., Amity/Imperva)
+                await page.goto(url, { waitUntil: 'commit', timeout: 30000 });
                 
-                // Optional wait for hydration if it's an SPA
-                await page.waitForTimeout(1000).catch(() => {});
+                // Essential wait for hydration and lazy-loaded content
+                // Scroll slightly to trigger 'on-scroll' lazy loading patterns
+                await page.evaluate(() => window.scrollBy(0, 500));
+                await page.waitForTimeout(8000).catch(() => {});
                 
                 internalPages.add(url);
                 progress(10, `Hydration Stabilized: Scanned ${new URL(url).pathname}`);

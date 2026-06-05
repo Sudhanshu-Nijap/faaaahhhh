@@ -159,6 +159,7 @@ const ChatInterface = ({
   const [isTyping, setIsTyping] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [chatMeta, setChatMeta] = useState(null); // { url, _id }
+  const [latestReport, setLatestReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [scanParams, setScanParams] = useState({ scope: 'single', mode: 'specific', tests: ['console', 'network', 'forms', 'ui', 'lighthouse', 'accessibility', 'links'] });
   const [showSensors, setShowSensors] = useState(false);
@@ -183,8 +184,29 @@ const ChatInterface = ({
         if (prev.some(m => m._id === msg._id)) return prev;
         return [...prev, msg];
       });
-      // Clear typing indicator if AI replied
-      if (msg.type === 'ai' || msg.type === 'report' || msg.type === 'rescan') {
+      
+      // Update Sticky Banner if it's a report/rescan
+      if (msg.type === 'report' || msg.type === 'rescan') {
+        setIsTyping(false);
+        if (msg.reportSummary) {
+          // Construct a compatible latestReport object from the summary
+          const normalized = {
+            _id: msg.scanReportId,
+            healthScore: msg.reportSummary.healthScore,
+            brokenLinks: { length: msg.reportSummary.stats.brokenLinks },
+            consoleErrors: { length: msg.reportSummary.stats.consoleErrors },
+            accessibilityIssues: { length: msg.reportSummary.stats.accessibilityIssues },
+            uiIssues: { length: msg.reportSummary.stats.uiIssues || 0 },
+            responsiveIssues: { length: 0 }
+          };
+          setLatestReport(normalized);
+        } else {
+          // Fallback to full fetch if no summary provided
+          axios.get(`${API_URL}/api/reports/${msg.scanReportId}`).then(r => setLatestReport(r.data));
+        }
+      }
+
+      if (msg.type === 'ai') {
         setIsTyping(false);
       }
     });
@@ -246,19 +268,32 @@ const ChatInterface = ({
     }
   }, []);
 
-  // Load messages when activeChatId changes
+  // Load messages and latest report when activeChatId changes
   useEffect(() => {
     if (activeChatId) {
       setLoading(true);
+      // Get Chat Metadata
       axios.get(`${API_URL}/api/chat/threads?userId=${localStorage.getItem('userId')}`)
         .then(r => {
           const chat = r.data.find(c => c._id === activeChatId);
           setChatMeta(chat || null);
+          
+          // Fetch the latest report directly from DB for this URL
+          if (chat?.url) {
+            axios.get(`${API_URL}/api/reports?userId=${localStorage.getItem('userId')}`)
+              .then(resp => {
+                const latest = resp.data
+                  .filter(rep => rep.url === chat.url && rep.status === 'completed')
+                  .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+                setLatestReport(latest || null);
+              });
+          }
         }).catch(() => {});
       loadMessages(activeChatId).finally(() => setLoading(false));
     } else {
       setMessages([]);
       setChatMeta(null);
+      setLatestReport(null);
     }
   }, [activeChatId, loadMessages]);
 
@@ -522,6 +557,50 @@ const ChatInterface = ({
                 </motion.div>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Sticky Report Banner ── */}
+      <AnimatePresence>
+        {activeView === 'qa' && latestReport && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }} 
+            animate={{ opacity: 1, y: 0 }}
+            className="sticky top-0 z-20 px-4 py-2 border-b border-[var(--eu-glass-border)] bg-[var(--eu-bg-void)]/80 backdrop-blur-md flex items-center justify-between gap-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col items-center">
+                <div className="size-8 rounded-full border-2 border-eu-accent flex items-center justify-center">
+                  <span className="text-[9px] font-black text-eu-accent">{latestReport.healthScore || '--'}</span>
+                </div>
+                <span className="text-[6px] font-black uppercase text-slate-500 mt-0.5">Health</span>
+              </div>
+              
+              <div className="h-6 w-px bg-white/5 mx-1" />
+              
+              <div className="flex items-center gap-3">
+                {[
+                  { label: 'Broken', val: latestReport.brokenLinks?.length || 0, color: 'text-red-400' },
+                  { label: 'Console', val: latestReport.consoleErrors?.length || 0, color: 'text-yellow-400' },
+                  { label: 'A11y', val: latestReport.accessibilityIssues?.length || 0, color: 'text-blue-400' },
+                  { label: 'UI/UX', val: (latestReport.uiIssues?.length || 0) + (latestReport.responsiveIssues?.length || 0), color: 'text-eu-accent' }
+                ].map(stat => (
+                  <div key={stat.label} className="flex flex-col">
+                    <span className={`text-[10px] font-black font-mono ${stat.val > 0 ? stat.color : 'text-slate-600'}`}>{stat.val}</span>
+                    <span className="text-[6px] font-black uppercase tracking-tighter text-slate-500">{stat.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button 
+              onClick={() => onViewFullReport(latestReport._id)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[8px] font-black uppercase tracking-widest text-white transition-all shadow-lg"
+            >
+              <Zap size={9} className="text-eu-accent" />
+              View Detail
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
